@@ -17,6 +17,7 @@ entities at once.
 
 | Document | Read it when |
 | --- | --- |
+| [`ARCHITECTURE-for-dummies.md`](./ARCHITECTURE-for-dummies.md) | You are new to this and want it in plain English, with a runnable minimal example. |
 | This file | Learning what the component does and how to use it. |
 | [`USAGE.md`](./USAGE.md) | You just want to wire MagicChat into a host — a complete minimal example plus the three things that will bite you. |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Before changing the code: module map, state ownership, invariants, extension recipes, pitfalls. |
@@ -73,7 +74,7 @@ Two rules hold the whole thing together:
 
 ```ts
 interface CustomEntity<P = object> {
-  type: string;      // registry key
+  type: string;      // key into `customEntityComponents`
   properties: P;     // opaque to MagicChat
 }
 ```
@@ -132,10 +133,18 @@ And one CSS requirement: the host's drag ghost must be `pointer-events: none`
 
 ```
 1. dragCustomEntities becomes non-empty
+     -> paint the overlay ("Drop custom entity here")
      -> attach pointermove / pointerup / pointercancel on `document`
-2. pointermove -> hit-test the coordinates -> show/hide the overlay
+2. pointermove -> hit-test the coordinates
+     -> inside? intensify the overlay to "Drop <label> here"
 3. pointerup   -> inside the drop zone? consume : cancel. Then go inert.
 ```
+
+Note which signal drives which tier. **Visibility follows the prop:** a non-empty
+array means the host says a drag is in flight, so the overlay is painted for the
+whole gesture — no pointer movement required. **The named tier follows the
+hit test**, and can only appear while the mechanism is still armed, so the
+component never says "drop here" about a release that would not land.
 
 ### Why coordinates, not onPointerEnter / onPointerLeave
 
@@ -198,8 +207,9 @@ still holds. That makes consumption idempotent without session ids or reference
 tracking: a stale array plus a stray click can never re-consume the entities.
 
 **Contract: the host must clear `dragCustomEntities` before the next drag.** A
-host that forgets gets a loud, obvious failure — the second drag does nothing —
-rather than a silent stale re-attach.
+host that forgets gets a loud, obvious failure — the drop overlay stays stranded
+on the chat and the second drag does nothing — rather than a silent stale
+re-attach.
 
 ---
 
@@ -209,7 +219,7 @@ Each entity type supplies two components. Both receive the **full** entity, so
 they can read any property and run entity-specific actions.
 
 ```tsx
-const customEntityTypes = useMemo(() => ({
+const customEntityComponents = useMemo(() => ({
   Car: {
     composer: CarChip,                                            // chip before sending
     message: (props) => <CarCard {...props} zoomTo={zoomTo} />,   // inside a message
@@ -257,7 +267,7 @@ Notes:
 
 ```tsx
 <MagicChat
-  customEntityTypes={customEntityTypes}
+  customEntityComponents={customEntityComponents}
   dragCustomEntities={dragCustomEntities}
   onDragCustomEntitiesConsumed={(entities) => setDragCustomEntities([])}
   onCustomEntityDragCancelled={(reason) => setDragCustomEntities([])}
@@ -282,9 +292,9 @@ and no future drag could arm.
 | `pointercancel`, window blur, or `Escape` | Overlay cleared; `onCustomEntityDragCancelled('cancelled')`. |
 | Host changes the array mid-drag | The array is the live source of truth; whatever it holds at release is consumed. |
 | Host empties the array mid-drag | Overlay disappears, no callback — the host caused it and already knows. |
-| Host never clears the array | The next drag does not arm. Deliberate; see "One drop per arming". |
+| Host never clears the array | The next drag does not arm, *and* the overlay stays stranded on the chat. Deliberate; see "One drop per arming". |
 | A second pointer touches down mid-drag | Ignored. MagicChat latches the first pointer id it sees and filters on it. |
-| Array populated with no button held | The first mouse move ends the gesture, so no overlay appears. |
+| Array populated with no button held | The overlay appears at once. The first mouse move ends the gesture — `onCustomEntityDragCancelled('cancelled')` fires, and clearing the array is what removes the overlay. |
 | Unknown `entity.type` | Generic fallback chip; no throw. |
 
 ---

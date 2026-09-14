@@ -175,7 +175,7 @@ this decision — see `ARCHITECTURE.md` §6.
 
 ## 8. Registry of components, keyed by `type`
 
-**Decision.** `customEntityTypes: Record<string, { composer, message, label?, getId? }>`,
+**Decision.** `customEntityComponents: Record<string, { composer, message, label?, getId? }>`,
 where `composer` and `message` are `ComponentType`s.
 
 **Why components, not render functions returning JSX.** Both notations work —
@@ -297,3 +297,73 @@ revealed that capturing a screenshot blurs the window and therefore cancels an
 in-flight drag via the `blur` handler, and its `ignored other pointer` entries
 confirmed the pointer-id lock discards the real mouse while a synthetic gesture
 holds the latch. Neither was visible before.
+
+---
+
+## 14. Overlay visibility follows the prop, not the latch
+
+**Decision.** `isDragActive` is `dragCustomEntities.length > 0`. The overlay is
+painted for exactly as long as the host says a drag is in flight. The latch no
+longer drives any pixels.
+
+**Why.** The latch is an *event* concern — it exists to make consumption
+idempotent (§5). Rendering from it made the view a function of internal
+bookkeeping rather than of props. The host was already doing it the other way:
+`HostApp` mounts its drag ghost on `dragOrigin && dragCustomEntities.length > 0`,
+so the two halves of one visual gesture were triggered by two different sources
+of truth. Now they agree.
+
+Prop-driven visibility also removes a frame of lag — the latch arms in an effect,
+so the overlay used to appear one commit after the prop changed.
+
+**Consequence of removing that lag.** The overlay is now painted *during* the
+one-commit window before the latch arms and the document listeners attach. The
+window is not new — the latch has always armed a commit after the prop — but it
+used to be invisible, because nothing was on screen during it either. A pointer
+move landing inside that window is not seen: verified with synthetic events,
+where two moves dispatched back-to-back after `pointerdown` produced a
+`pointermove` fired count of 1 in the debug bar.
+
+Harmless in practice, and deliberately so. A human's first real move arrives a
+frame or more after the press, by which time the latch is armed; a missed move is
+corrected by the next one; and `pointerup` re-hit-tests its own coordinates
+rather than trusting the last move (§3), so the drop decision is never the
+casualty. Do not "fix" this by arming synchronously during render — that is a
+side effect in a render body, and the gap it closes is invisible.
+
+**What keeps the overlay honest.** Two tiers, and only the weak one moved:
+
+| Tier | Driven by | Claim |
+| --- | --- | --- |
+| "Drop custom entity here" | the prop | "a drag is in flight, and this is a drop zone" — true regardless of the latch |
+| "Drop `<label>` here" + `-over` classes | `isPointerOver` | "release now and it lands here" |
+
+`isPointerOver` is only ever set inside the armed effect and is reset in its
+cleanup, so it is already an armed-*and*-over signal. The specific promise is
+therefore still latch-gated, for free, with no new state.
+
+**Rejected: a distinct "disarmed" overlay variant** — dimmed, no `＋`, text like
+"drag already released" — shown when the prop is non-empty but the latch is
+`spent`. Strictly more honest, but it promotes a host contract violation to a
+first-class UI state with its own styling, and spends design vocabulary on a
+situation that should not exist.
+
+**Accepted trade-off.** A host that never clears now leaves the overlay stranded
+over an inert drop target. The drop was already dead in that case — before this
+it just failed invisibly — so this is the same §5 bargain, taken one step
+further: the failure is now impossible to miss rather than merely diagnosable.
+
+Note the full shape of it, though. Forgetting `onCustomEntityDragCancelled` is a
+*common* mistake (`USAGE.md` lists it as one of three that will bite you), and
+the degraded state changes from "drag works once, then stops" to "a blue overlay
+permanently covering the chat". That is better for the developer, who sees it
+immediately, and worse for end users if it ever ships, because a dead feature is
+less damaging than a panel that cannot be dismissed. Accepted for a POC; a host
+with a real release process should treat a stuck overlay as the loud signal it
+is meant to be.
+
+**Consequence for the stories.** `MagicChat.stories.tsx` sets
+`dragCustomEntities` as static story data and never clears it, so
+`DragCustomEntities` now shows the stranded overlay permanently. That is the
+contract on display rather than a broken story — and the story previously needed
+a footnote explaining why the overlay vanished on the first mouse move.

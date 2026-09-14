@@ -35,7 +35,7 @@ export interface CustomEntityMessageProps<E extends CustomEntity = CustomEntity>
  * Both renderers are plain components, so the shorthand
  * `composer: ({ entity }) => <CarChip entity={entity} />` works as-is.
  */
-export interface CustomEntityTypeDefinition<E extends CustomEntity = CustomEntity> {
+export interface CustomEntityComponentDefinition<E extends CustomEntity = CustomEntity> {
   composer: ComponentType<CustomEntityComposerProps<E>>;
   message: ComponentType<CustomEntityMessageProps<E>>;
   /** Human-readable name, used in the drop overlay and for accessibility. */
@@ -54,7 +54,7 @@ export interface CustomEntityTypeDefinition<E extends CustomEntity = CustomEntit
  * entity types can live in one object. Hosts keep their typing by writing
  * renderers as typed components (see the demo's `entityRenderers.tsx`).
  */
-export type CustomEntityTypeRegistry = Record<string, CustomEntityTypeDefinition<any>>;
+export type CustomEntityComponentRegistry = Record<string, CustomEntityComponentDefinition<any>>;
 
 /**
  * An entity attached to the composer.
@@ -147,15 +147,19 @@ export interface CustomEntityDropDebug {
 }
 
 export interface MagicChatProps {
-  /** How to render each supported entity type. See `CustomEntityTypeDefinition`. */
-  customEntityTypes: CustomEntityTypeRegistry;
+  /** How to render each supported entity type. See `CustomEntityComponentDefinition`. */
+  customEntityComponents: CustomEntityComponentRegistry;
 
   /**
    * Entities the host is currently dragging. Non-empty means "a drag is in
-   * flight"; MagicChat then watches for the pointer release.
+   * flight": MagicChat paints its drop overlay and watches for the pointer
+   * release.
    *
    * CONTRACT: the host must clear this back to empty before starting the next
-   * drag. MagicChat allows at most one drop per non-empty period.
+   * drag. MagicChat allows at most one drop per non-empty period, and the
+   * overlay stays up for as long as the array is non-empty — so a host that
+   * forgets to clear leaves it stranded on screen. That is deliberate; see
+   * DECISIONS.md §5 and §14.
    */
   dragCustomEntities?: CustomEntity[];
 
@@ -177,7 +181,8 @@ export interface MagicChatProps {
 
   /**
    * Diagnostics only. Called with a snapshot of the drop target's internals,
-   * coalesced to one call per animation frame. Omit it and nothing is computed.
+   * synchronously and unthrottled (see DECISIONS.md §13 for why it is not
+   * coalesced into a frame). Omit it and nothing is computed.
    */
   onDebugChange?: (debug: CustomEntityDropDebug) => void;
 }

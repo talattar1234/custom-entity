@@ -5,7 +5,7 @@ import type {
   CustomEntity,
   CustomEntityDragCancelReason,
   CustomEntityDropDebug,
-  CustomEntityTypeRegistry,
+  CustomEntityComponentRegistry,
 } from '../magic-chat';
 import { MapPanel } from './MapPanel';
 import type { MapApi } from './MapPanel';
@@ -102,7 +102,7 @@ export function HostApp() {
     inline arrow recreated every render would be a NEW component type each time,
     and React would remount every renderer instead of updating it.
   */
-  const customEntityTypes: CustomEntityTypeRegistry = useMemo(
+  const customEntityComponents: CustomEntityComponentRegistry = useMemo(
     () => ({
       Car: {
         composer: CarChip,
@@ -127,7 +127,7 @@ export function HostApp() {
   );
 
   const ghostLabels = dragCustomEntities.map((entity) =>
-    entityLabel(customEntityTypes, entity),
+    entityLabel(customEntityComponents, entity),
   );
 
   return (
@@ -185,7 +185,7 @@ export function HostApp() {
 
         <aside className="host-chat">
           <MagicChat
-            customEntityTypes={customEntityTypes}
+            customEntityComponents={customEntityComponents}
             dragCustomEntities={dragCustomEntities}
             onDragCustomEntitiesConsumed={(entities) =>
               endDrag(`consumed ${entities.length} entit${entities.length === 1 ? 'y' : 'ies'}`)

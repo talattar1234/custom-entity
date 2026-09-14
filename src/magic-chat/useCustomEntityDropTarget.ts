@@ -107,16 +107,23 @@ interface UseCustomEntityDropTargetOptions {
   onDrop: (entities: CustomEntity[]) => void;
   /** Released outside, or the gesture was cancelled. */
   onCancel?: (reason: CustomEntityDragCancelReason) => void;
-  /** Diagnostics only. Coalesced to one call per animation frame. */
+  /** Diagnostics only. Emitted synchronously and unthrottled — see DECISIONS.md §13. */
   onDebug?: (debug: CustomEntityDropDebug) => void;
 }
 
 interface UseCustomEntityDropTargetResult {
   /** Attach to the element that should accept drops. */
   dropZoneRef: RefObject<HTMLDivElement>;
-  /** A drag is in flight and has not been resolved yet. */
+  /**
+   * The host says a drag is in flight — i.e. `dragCustomEntities` is non-empty.
+   *
+   * Prop-driven on purpose. This is a *view* signal, so it stays a pure function
+   * of props rather than of the internal latch, which is an event concern (it
+   * exists to make consumption idempotent). `isPointerOver` is the flag that
+   * reflects a drop being genuinely possible right now.
+   */
   isDragActive: boolean;
-  /** The dragged pointer is currently over the drop zone. */
+  /** The dragged pointer is over the drop zone, and the gesture is still live. */
   isPointerOver: boolean;
 }
 
@@ -324,5 +331,10 @@ export function useCustomEntityDropTarget({
     };
   }, [latch, emitDebug, logDebugEvent]);
 
-  return { dropZoneRef, isDragActive: latch === 'armed', isPointerOver };
+  // `isDragActive` follows the prop, not the latch: a drop *indicator* should be
+  // a function of what the host says, while the latch governs what the mechanism
+  // will actually do. They agree for the whole of a well-behaved gesture, and
+  // diverge only after a release the host has not yet cleared — where leaving the
+  // overlay up is the loud, diagnosable failure (see DECISIONS.md §14).
+  return { dropZoneRef, isDragActive: hasEntities, isPointerOver };
 }

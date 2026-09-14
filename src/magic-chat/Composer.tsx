@@ -1,10 +1,10 @@
 import type { ComponentType } from 'react';
 import { forwardRef } from 'react';
 import { ComposerEntity } from './EntityRenderer';
-import type { AttachedEntity, CustomEntityTypeRegistry, UnknownEntityProps } from './types';
+import type { AttachedEntity, CustomEntityComponentRegistry, UnknownEntityProps } from './types';
 
 interface ComposerProps {
-  registry: CustomEntityTypeRegistry;
+  registry: CustomEntityComponentRegistry;
   attachments: AttachedEntity[];
   text: string;
   onTextChange: (text: string) => void;

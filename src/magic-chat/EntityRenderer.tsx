@@ -3,7 +3,7 @@ import type {
   AttachedEntity,
   ChatMessage,
   CustomEntity,
-  CustomEntityTypeRegistry,
+  CustomEntityComponentRegistry,
   UnknownEntityProps,
 } from './types';
 
@@ -19,13 +19,13 @@ function DefaultUnknownEntity({ entity }: UnknownEntityProps) {
 }
 
 /** The name to show for an entity in generic chrome (e.g. the drop overlay). */
-export function entityLabel(registry: CustomEntityTypeRegistry, entity: CustomEntity): string {
+export function entityLabel(registry: CustomEntityComponentRegistry, entity: CustomEntity): string {
   const definition = registry[entity.type];
   return definition?.label?.(entity) ?? entity.type;
 }
 
 interface ComposerEntityProps {
-  registry: CustomEntityTypeRegistry;
+  registry: CustomEntityComponentRegistry;
   attached: AttachedEntity;
   remove: () => void;
   renderUnknownEntity?: ComponentType<UnknownEntityProps>;
@@ -51,7 +51,7 @@ export function ComposerEntity({
 }
 
 interface MessageEntityProps {
-  registry: CustomEntityTypeRegistry;
+  registry: CustomEntityComponentRegistry;
   entity: CustomEntity;
   message: ChatMessage;
   renderUnknownEntity?: ComponentType<UnknownEntityProps>;

@@ -1,10 +1,10 @@
 import type { ComponentType } from 'react';
 import { useEffect, useRef } from 'react';
 import { MessageEntity } from './EntityRenderer';
-import type { ChatMessage, CustomEntityTypeRegistry, UnknownEntityProps } from './types';
+import type { ChatMessage, CustomEntityComponentRegistry, UnknownEntityProps } from './types';
 
 interface MessageListProps {
-  registry: CustomEntityTypeRegistry;
+  registry: CustomEntityComponentRegistry;
   messages: ChatMessage[];
   renderUnknownEntity?: ComponentType<UnknownEntityProps>;
 }

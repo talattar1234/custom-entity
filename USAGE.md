@@ -17,7 +17,7 @@ import type {
   CustomEntity,
   CustomEntityComposerProps,
   CustomEntityMessageProps,
-  CustomEntityTypeRegistry,
+  CustomEntityComponentRegistry,
 } from './magic-chat';
 import './magic-chat/magic-chat.css';
 
@@ -63,7 +63,7 @@ export function App() {
   const [dragCustomEntities, setDragCustomEntities] = useState<CustomEntity[]>([]);
 
   // Must be memoised — see "Three things that will bite you" below.
-  const customEntityTypes: CustomEntityTypeRegistry = useMemo(
+  const customEntityComponents: CustomEntityComponentRegistry = useMemo(
     () => ({
       Car: {
         composer: CarChip,
@@ -92,7 +92,7 @@ export function App() {
 
       <div style={{ width: 400 }}>
         <MagicChat
-          customEntityTypes={customEntityTypes}
+          customEntityComponents={customEntityComponents}
           dragCustomEntities={dragCustomEntities}
           onDragCustomEntitiesConsumed={clearDrag}
           onCustomEntityDragCancelled={clearDrag}
@@ -116,8 +116,8 @@ onPointerDown           → setDragCustomEntities([car])
                             │
                             ▼
 MagicChat sees a non-empty array
-  → attaches pointermove / pointerup on `document`
-  → pointermove: hit-tests the coordinates, shows the drop overlay
+  → paints the drop overlay, and attaches pointermove / pointerup on `document`
+  → pointermove: hit-tests the coordinates, names the entity in the overlay
   → pointerup:   inside the chat? attach to composer : ignore
                             │
                             ▼
@@ -139,10 +139,10 @@ state and animations all reset, and it looks like a rendering bug.
 
 ```tsx
 // ✗ remounts every renderer on every render
-<MagicChat customEntityTypes={{ Car: { composer: CarChip, message: CarCard } }} … />
+<MagicChat customEntityComponents={{ Car: { composer: CarChip, message: CarCard } }} … />
 
 // ✓
-const customEntityTypes = useMemo(() => ({ Car: { … } }), []);
+const customEntityComponents = useMemo(() => ({ Car: { … } }), []);
 ```
 
 If a renderer needs host behaviour, inject it with a stable callback:
@@ -150,7 +150,7 @@ If a renderer needs host behaviour, inject it with a stable callback:
 ```tsx
 const zoomTo = useCallback((lat: number, lng: number) => map.flyTo(lat, lng), [map]);
 
-const customEntityTypes = useMemo(() => ({
+const customEntityComponents = useMemo(() => ({
   Car: {
     composer: CarChip,
     message: (props) => <CarCard {...props} zoomTo={zoomTo} />,
@@ -159,10 +159,13 @@ const customEntityTypes = useMemo(() => ({
 ```
 
 **2. Always clear the array.** MagicChat allows **one drop per non-empty
-period**. If you only clear in `onDragCustomEntitiesConsumed`, a drag released
-outside the chat leaves the array populated and *no future drag will arm* —
-which looks like "drag works once, then stops". Handle both callbacks, as the
-example does.
+period**, and it paints its drop overlay for as long as the array is non-empty.
+If you only clear in `onDragCustomEntitiesConsumed`, a drag released outside the
+chat leaves the array populated — so the overlay stays stranded on top of the
+chat and *no future drag will arm*. Handle both callbacks, as the example does.
+
+A drop overlay that will not go away is the symptom, and this is always the
+cause.
 
 **3. Your drag ghost must be `pointer-events: none`.** If you render something
 that follows the cursor, MagicChat's `document.elementFromPoint` hit test will
@@ -183,7 +186,7 @@ touch-drag as a scroll and fires `pointercancel` mid-gesture.
 Add a key. Nothing else changes.
 
 ```tsx
-const customEntityTypes = useMemo(() => ({
+const customEntityComponents = useMemo(() => ({
   Car:  { composer: CarChip,  message: CarCard },
   Area: { composer: AreaChip, message: AreaCard },
 }), []);

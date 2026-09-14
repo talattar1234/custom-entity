@@ -56,3 +56,6 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+*storybook.log
+storybook-static

@@ -25,11 +25,11 @@ const formatTime = (date: Date) =>
  *
  * MagicChat knows only the generic shape `{ type, properties }`. Everything
  * entity-specific — appearance, actions — comes from the host's renderers in
- * `customEntityTypes`.
+ * `customEntityComponents`.
  */
 export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function MagicChat(
   {
-    customEntityTypes,
+    customEntityComponents,
     dragCustomEntities = NO_ENTITIES,
     onDragCustomEntitiesConsumed,
     onCustomEntityDragCancelled,
@@ -53,13 +53,13 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
         for (const entity of entities) {
           // De-duplication is opt-in per type: only the host can say what
           // makes two entities "the same", because only it knows the schema.
-          const getId = customEntityTypes[entity.type]?.getId;
+          const getId = customEntityComponents[entity.type]?.getId;
           if (getId) {
             const id = getId(entity);
             const alreadyAttached = next.some(
               (candidate) =>
                 candidate.entity.type === entity.type &&
-                customEntityTypes[candidate.entity.type]?.getId?.(candidate.entity) === id,
+                customEntityComponents[candidate.entity.type]?.getId?.(candidate.entity) === id,
             );
             if (alreadyAttached) continue;
           }
@@ -70,7 +70,7 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
         return next;
       });
     },
-    [customEntityTypes],
+    [customEntityComponents],
   );
 
   const handleDrop = useCallback(
@@ -128,7 +128,7 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
   );
 
   const overlayLabels = dragCustomEntities.map((entity) =>
-    entityLabel(customEntityTypes, entity),
+    entityLabel(customEntityComponents, entity),
   );
 
   return (
@@ -148,14 +148,14 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
       </header>
 
       <MessageList
-        registry={customEntityTypes}
+        registry={customEntityComponents}
         messages={messages}
         renderUnknownEntity={renderUnknownEntity}
       />
 
       <Composer
         ref={textareaRef}
-        registry={customEntityTypes}
+        registry={customEntityComponents}
         attachments={attachments}
         text={text}
         onTextChange={setText}
@@ -165,12 +165,20 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
       />
 
       {/*
-        The drop overlay. It is `pointer-events: none` in CSS, which is not
-        cosmetic: `document.elementFromPoint` would otherwise return the overlay
-        on every hit test instead of the chat underneath.
+        The drop overlay, in two tiers.
 
-        Shown for the whole drag (so it is obvious MagicChat recognises the
-        entity) and intensified once the pointer is actually inside.
+        Visibility is prop-driven: `isDragActive` is simply "the host put
+        entities in `dragCustomEntities`", so the base "Drop custom entity here"
+        state is painted for the whole gesture. That claim stays true whatever
+        the mechanism's latch is doing.
+
+        `isPointerOver` upgrades it to the named "Drop <label> here" state. That
+        flag can only be true while the drop target is armed, so the specific
+        promise is never made when a drop would not actually land.
+
+        `pointer-events: none` in the CSS is not cosmetic:
+        `document.elementFromPoint` would otherwise return the overlay on every
+        hit test instead of the chat underneath.
       */}
       {isDragActive && (
         <div className="mc-drop-overlay" aria-hidden="true">

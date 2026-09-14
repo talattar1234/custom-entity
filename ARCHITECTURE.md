@@ -145,6 +145,14 @@ structure, so keep them in mind when editing:
    fires per armed gesture — never both, never neither.
 5. The host clears `dragCustomEntities` before the next drag begins.
 6. Document listeners exist only while the latch is `armed`.
+
+On 6, note what does *not* track the latch: **listener lifetime follows the
+latch, overlay visibility follows the prop.** `isDragActive` is
+`dragCustomEntities.length > 0`, so between a release and the host clearing, the
+overlay is up while the mechanism is already inert. Deliberate — see
+`DECISIONS.md` §14. The named "Drop `<label>` here" tier is driven by
+`isPointerOver`, which *is* latch-bound, so the specific promise is never made
+when a drop would not land.
 7. The registry object identity is stable across renders (see §6, pitfall 2).
 
 ---
@@ -157,8 +165,8 @@ Everything below is exported from `src/magic-chat/index.ts`.
 
 | Prop | Type | Notes |
 | --- | --- | --- |
-| `customEntityTypes` | `CustomEntityTypeRegistry` | Required. Keyed by `entity.type`. |
-| `dragCustomEntities` | `CustomEntity[]` | Non-empty = drag in flight. |
+| `customEntityComponents` | `CustomEntityComponentRegistry` | Required. One `{ composer, message }` pair per entity type, keyed by `entity.type`. |
+| `dragCustomEntities` | `CustomEntity[]` | Non-empty = drag in flight, and = the overlay is painted. |
 | `onDragCustomEntitiesConsumed` | `(entities) => void` | Dropped on the chat. |
 | `onCustomEntityDragCancelled` | `(reason) => void` | `'released-outside' \| 'cancelled'`. |
 | `initialMessages` | `ChatMessage[]` | Seed only; messages are internal state. |
@@ -169,7 +177,7 @@ Everything below is exported from `src/magic-chat/index.ts`.
 ### Registry entry
 
 ```ts
-interface CustomEntityTypeDefinition<E extends CustomEntity> {
+interface CustomEntityComponentDefinition<E extends CustomEntity> {
   composer: ComponentType<CustomEntityComposerProps<E>>;  // { entity, instanceId, remove }
   message:  ComponentType<CustomEntityMessageProps<E>>;   // { entity, message }
   label?:   (entity: E) => string;   // overlay + ghost text; falls back to entity.type
@@ -194,6 +202,16 @@ const { dropZoneRef, isDragActive, isPointerOver } = useCustomEntityDropTarget({
 
 Knows nothing about chat. Use it to make any element a drop target for
 host-driven pointer drags.
+
+The two flags are not the same kind of signal, and the difference matters when
+you style a target:
+
+- `isDragActive` is **prop-driven** — literally `dragCustomEntities.length > 0`.
+  Use it for "a drag is in flight" affordances. It stays true after a release
+  until the host clears the array (`DECISIONS.md` §14).
+- `isPointerOver` is **latch-bound** — it can only be true while the mechanism is
+  armed and hit-testing inside the zone. Use it for anything that promises the
+  drop will actually land.
 
 ### 4.1 Debug instrumentation
 
@@ -264,7 +282,7 @@ every frame.
    a seed constant. Add it to `mapEntities` if it belongs on the map.
 2. `host/entityRenderers.tsx` — add `FooChip` and `FooCard`. Copy `CarChip` /
    `CarCard`; they are deliberately parallel. Give the card its own actions.
-3. `host/HostApp.tsx` — add a `Foo:` entry to the `customEntityTypes` memo.
+3. `host/HostApp.tsx` — add a `Foo:` entry to the `customEntityComponents` memo.
 4. `host/MapPanel.tsx` — only if it needs to be draggable from the map: add a
    marker (DOM path) or extend `findEntityAt` (canvas path).
 
@@ -331,16 +349,18 @@ and confusing.
    becomes the answer to every hit test. The ghost is the sneaky one: it follows
    the cursor, so it would break detection *always*, not intermittently.
 
-2. **Registry identity must be stable.** `customEntityTypes` is built with
+2. **Registry identity must be stable.** `customEntityComponents` is built with
    `useMemo` over a `useCallback`-stable `zoomTo`. An inline arrow recreated per
    render is a *new component type* each time, so React unmounts and remounts
    every renderer instead of updating it — you lose focus, animation and local
    state in the cards, and it looks like a rendering bug.
 
 3. **The host must clear the array.** If it does not, the latch stays `spent`
-   and the next drag silently does nothing. This is intentional (loud failure
-   beats stale re-consumption), but it is the first thing to check when "drag
-   stopped working after one use".
+   and the next drag does nothing — and because the overlay follows the prop,
+   it also stays stranded on top of the chat. Both are intentional (loud failure
+   beats stale re-consumption; see `DECISIONS.md` §5 and §14). A drop overlay
+   that will not go away is the symptom, and the fix is always the same: handle
+   *both* callbacks.
 
 4. **`stopPropagation()` in the map's capture-phase handler is what stops
    Leaflet panning.** Remove it and the map pans while you drag. It works
@@ -389,8 +409,10 @@ the list that was actually exercised — re-run it after touching the mechanism:
 | Check | Expected |
 | --- | --- |
 | Drag a marker onto the chat | `consumed 1 entity`, chip appears |
+| Press a marker, before moving | overlay already painted — it follows the prop, not a move |
 | Mid-drag, pointer over chat | overlay reads `Drop <label> here`, `mc-chat-drag-over` class |
 | Mid-drag, pointer outside | overlay reads `Drop custom entity here`, no `-over` class |
+| Host does not clear after a release | overlay stays stranded and drops do nothing — the loud failure of §14 |
 | Release outside the chat | `released-outside`, nothing attached |
 | Escape with pointer inside | `cancelled`, nothing attached |
 | Three synchronous `pointerup`s | exactly **one** attachment |
