@@ -136,7 +136,7 @@ And one CSS requirement: the host's drag ghost must be `pointer-events: none`
      -> paint the overlay ("Drop custom entity here")
      -> attach pointermove / pointerup / pointercancel on `document`
 2. pointermove -> hit-test the coordinates
-     -> inside? intensify the overlay to "Drop <label> here"
+     -> inside? intensify the overlay to "Release to attach <label>"
 3. pointerup   -> inside the drop zone? consume : cancel. Then go inert.
 ```
 
@@ -294,7 +294,7 @@ and no future drag could arm.
 | Host empties the array mid-drag | Overlay disappears, no callback — the host caused it and already knows. |
 | Host never clears the array | The next drag does not arm, *and* the overlay stays stranded on the chat. Deliberate; see "One drop per arming". |
 | A second pointer touches down mid-drag | Ignored. MagicChat latches the first pointer id it sees and filters on it. |
-| Array populated with no button held | The overlay appears at once. The first mouse move ends the gesture — `onCustomEntityDragCancelled('cancelled')` fires, and clearing the array is what removes the overlay. |
+| Array populated with no button held | The overlay appears at once, but the drop target is dead: the first mouse move sees `buttons === 0`, concludes the gesture is over, and fires `onCustomEntityDragCancelled('cancelled')`. Hovering the chat will never reach the second overlay tier. Set the array from `pointerdown`, not from a click, an effect, or a Storybook arg. |
 | Unknown `entity.type` | Generic fallback chip; no throw. |
 
 ---
@@ -303,7 +303,7 @@ and no future drag could arm.
 
 `dragCustomEntities` is an array throughout — nothing assumes one entity. The
 toolbar's "Drag group" source carries a Car and an Area together; the overlay
-reads "Drop 2 custom entities here" and both chips land in the composer.
+reads "Release to attach Car 123 and Area A" and both chips land in the composer.
 
 ---
 

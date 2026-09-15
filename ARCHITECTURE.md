@@ -150,7 +150,7 @@ On 6, note what does *not* track the latch: **listener lifetime follows the
 latch, overlay visibility follows the prop.** `isDragActive` is
 `dragCustomEntities.length > 0`, so between a release and the host clearing, the
 overlay is up while the mechanism is already inert. Deliberate — see
-`DECISIONS.md` §14. The named "Drop `<label>` here" tier is driven by
+`DECISIONS.md` §14. The named "Release to attach `<label>`" tier is driven by
 `isPointerOver`, which *is* latch-bound, so the specific promise is never made
 when a drop would not land.
 7. The registry object identity is stable across renders (see §6, pitfall 2).
@@ -410,7 +410,7 @@ the list that was actually exercised — re-run it after touching the mechanism:
 | --- | --- |
 | Drag a marker onto the chat | `consumed 1 entity`, chip appears |
 | Press a marker, before moving | overlay already painted — it follows the prop, not a move |
-| Mid-drag, pointer over chat | overlay reads `Drop <label> here`, `mc-chat-drag-over` class |
+| Mid-drag, pointer over chat | overlay reads `Release to attach <label>`, `mc-chat-drag-over` class |
 | Mid-drag, pointer outside | overlay reads `Drop custom entity here`, no `-over` class |
 | Host does not clear after a release | overlay stays stranded and drops do nothing — the loud failure of §14 |
 | Release outside the chat | `released-outside`, nothing attached |
@@ -422,3 +422,8 @@ the list that was actually exercised — re-run it after touching the mechanism:
 | "Zoom to" in a sent card | map flies and the object flashes |
 | Map panning during a drag | must not happen |
 | Console | no errors or warnings |
+
+The first four rows are now covered by the `DragGesture` story, which drives a
+real held gesture with `PointerEvent`s and runs under `npm test`. The rest still
+need a human — `elementFromPoint` against a live Leaflet map, and map panning,
+have no meaningful synthetic equivalent.

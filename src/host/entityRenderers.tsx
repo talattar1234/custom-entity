@@ -1,6 +1,9 @@
-import type { ReactNode } from 'react';
-import type { CustomEntityComposerProps, CustomEntityMessageProps } from '../magic-chat';
-import type { AircraftEntity, AreaEntity, CarEntity } from './entities';
+import type { ReactNode } from "react";
+import type {
+  CustomEntityComposerProps,
+  CustomEntityMessageProps,
+} from "../magic-chat";
+import type { AircraftEntity, AreaEntity, CarEntity } from "./entities";
 
 /**
  * The host's renderers for its three entity types.
@@ -14,7 +17,11 @@ import type { AircraftEntity, AreaEntity, CarEntity } from './entities';
  * host behaviour reaches a renderer without MagicChat knowing anything about it.
  */
 
-export type ZoomTo = (latitude: number, longitude: number, entityId: string) => void;
+export type ZoomTo = (
+  latitude: number,
+  longitude: number,
+  entityId: string,
+) => void;
 
 /* ---------- shared chrome (host styling choices, not MagicChat's) ---------- */
 
@@ -78,7 +85,10 @@ function Card({
 
 /* ---------- Car ---------- */
 
-export function CarChip({ entity, remove }: CustomEntityComposerProps<CarEntity>) {
+export function CarChip({
+  entity,
+  remove,
+}: CustomEntityComposerProps<CarEntity>) {
   return (
     <Chip
       icon="🚗"
@@ -100,9 +110,9 @@ export function CarCard({
       icon="🚗"
       title={name}
       rows={[
-        ['Status', status],
-        ['Speed', `${speedKph} km/h`],
-        ['Position', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
+        ["Status", status],
+        ["Speed", `${speedKph} km/h`],
+        ["Position", `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
       ]}
       actions={
         <button type="button" onClick={() => zoomTo(latitude, longitude, id)}>
@@ -115,7 +125,10 @@ export function CarCard({
 
 /* ---------- Aircraft ---------- */
 
-export function AircraftChip({ entity, remove }: CustomEntityComposerProps<AircraftEntity>) {
+export function AircraftChip({
+  entity,
+  remove,
+}: CustomEntityComposerProps<AircraftEntity>) {
   return (
     <Chip
       icon="✈️"
@@ -130,16 +143,17 @@ export function AircraftCard({
   entity,
   zoomTo,
 }: CustomEntityMessageProps<AircraftEntity> & { zoomTo: ZoomTo }) {
-  const { id, callsign, altitudeFt, headingDeg, latitude, longitude } = entity.properties;
+  const { id, callsign, altitudeFt, headingDeg, latitude, longitude } =
+    entity.properties;
 
   return (
     <Card
       icon="✈️"
       title={callsign}
       rows={[
-        ['Altitude', `${altitudeFt} ft`],
-        ['Heading', `${headingDeg}°`],
-        ['Position', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
+        ["Altitude", `${altitudeFt} ft`],
+        ["Heading", `${headingDeg}°`],
+        ["Position", `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
       ]}
       actions={
         <button type="button" onClick={() => zoomTo(latitude, longitude, id)}>
@@ -152,7 +166,10 @@ export function AircraftCard({
 
 /* ---------- Area ---------- */
 
-export function AreaChip({ entity, remove }: CustomEntityComposerProps<AreaEntity>) {
+export function AreaChip({
+  entity,
+  remove,
+}: CustomEntityComposerProps<AreaEntity>) {
   return (
     <Chip
       icon="📍"
@@ -167,16 +184,17 @@ export function AreaCard({
   entity,
   zoomTo,
 }: CustomEntityMessageProps<AreaEntity> & { zoomTo: ZoomTo }) {
-  const { id, name, classification, ring, latitude, longitude } = entity.properties;
+  const { id, name, classification, ring, latitude, longitude } =
+    entity.properties;
 
   return (
     <Card
       icon="📍"
       title={name}
       rows={[
-        ['Classification', classification],
-        ['Vertices', String(ring.length)],
-        ['Centre', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
+        ["Classification", classification],
+        ["Vertices", String(ring.length)],
+        ["Centre", `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`],
       ]}
       actions={
         <button type="button" onClick={() => zoomTo(latitude, longitude, id)}>

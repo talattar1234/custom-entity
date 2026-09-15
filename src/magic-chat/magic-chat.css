@@ -17,8 +17,11 @@
   box-shadow: inset 0 0 0 2px #93c5fd;
 }
 
+/* Deliberately a large step up from `-drag-active`, not a shade of it. This is
+   read peripherally, mid-gesture, with a drag ghost under the cursor — the two
+   tiers were previously 1px and a hue apart, which in practice was invisible. */
 .mc-chat-drag-over {
-  box-shadow: inset 0 0 0 3px #2563eb;
+  box-shadow: inset 0 0 0 4px #2563eb;
 }
 
 .mc-header {
@@ -160,7 +163,7 @@
 }
 
 .mc-chat-drag-over .mc-drop-overlay {
-  background: rgba(37, 99, 235, 0.16);
+  background: rgba(37, 99, 235, 0.22);
 }
 
 .mc-drop-overlay-card {
@@ -178,9 +181,18 @@
   text-align: center;
 }
 
+/* Inverted, not merely emphasised — same reasoning as `.mc-chat-drag-over`. */
 .mc-chat-drag-over .mc-drop-overlay-card {
   border-style: solid;
-  transform: scale(1.03);
+  background: #2563eb;
+  color: #ffffff;
+  transform: scale(1.06);
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.45);
+}
+
+.mc-chat-drag-over .mc-drop-overlay-label {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .mc-drop-overlay-icon {

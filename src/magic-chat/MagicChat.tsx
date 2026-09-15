@@ -21,6 +21,30 @@ const formatTime = (date: Date) =>
   date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 /**
+ * Headline for the armed-and-over state.
+ *
+ * Two things are load-bearing here, both learned the hard way:
+ *
+ * 1. It leads with "Release", not "Drop". The base state says "Drop custom
+ *    entity here", so a headline starting with "Drop" reads as the same string
+ *    at a glance — which is what the user is doing mid-drag, with a ghost under
+ *    the cursor. "Release" names the affordance and cannot be confused with it.
+ * 2. It NAMES the entities even when there are several. An earlier version fell
+ *    back to "Drop 2 custom entities here" for length > 1, which differs from
+ *    the base string only in the middle and so was effectively invisible — the
+ *    over state looked broken for every multi-entity drag.
+ *
+ * Long payloads are truncated rather than wrapped: the full list is always
+ * rendered as chips underneath, so the headline only has to be distinctive.
+ */
+function dropPrompt(labels: string[]): string {
+  if (labels.length === 0) return 'Release to attach';
+  if (labels.length === 1) return `Release to attach ${labels[0]}`;
+  if (labels.length === 2) return `Release to attach ${labels[0]} and ${labels[1]}`;
+  return `Release to attach ${labels[0]} and ${labels.length - 1} more`;
+}
+
+/**
  * A mock chat that accepts custom entities dragged in from the host app.
  *
  * MagicChat knows only the generic shape `{ type, properties }`. Everything
@@ -172,9 +196,13 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
         state is painted for the whole gesture. That claim stays true whatever
         the mechanism's latch is doing.
 
-        `isPointerOver` upgrades it to the named "Drop <label> here" state. That
-        flag can only be true while the drop target is armed, so the specific
-        promise is never made when a drop would not actually land.
+        `isPointerOver` upgrades it to the named "Release to attach <label>"
+        state. That flag can only be true while the drop target is armed, so the
+        specific promise is never made when a drop would not actually land.
+
+        The two tiers must be distinguishable at a glance, mid-drag, with a drag
+        ghost under the cursor — see `dropPrompt` for why the wording and not
+        just the styling carries that load.
 
         `pointer-events: none` in the CSS is not cosmetic:
         `document.elementFromPoint` would otherwise return the overlay on every
@@ -185,11 +213,7 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
           <div className="mc-drop-overlay-card">
             <span className="mc-drop-overlay-icon">＋</span>
             <strong>
-              {isPointerOver
-                ? overlayLabels.length === 1
-                  ? `Drop ${overlayLabels[0]} here`
-                  : `Drop ${overlayLabels.length} custom entities here`
-                : 'Drop custom entity here'}
+              {isPointerOver ? dropPrompt(overlayLabels) : 'Drop custom entity here'}
             </strong>
             <div className="mc-drop-overlay-labels">
               {overlayLabels.map((label, index) => (

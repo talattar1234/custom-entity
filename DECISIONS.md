@@ -187,7 +187,7 @@ treating each render as fresh output.
 **Why `label` and `getId` are on the registry rather than inferred.** MagicChat
 does not know the schema, so it cannot produce a display name or an identity.
 Putting them on the type definition keeps the entity opaque while still letting
-the overlay say "Drop Car 123 here" and letting the composer de-duplicate.
+the overlay say "Release to attach Car 123" and letting the composer de-duplicate.
 Both are optional; `label` falls back to `entity.type` and without `getId` there
 is simply no de-duplication.
 
@@ -336,11 +336,32 @@ side effect in a render body, and the gap it closes is invisible.
 | Tier | Driven by | Claim |
 | --- | --- | --- |
 | "Drop custom entity here" | the prop | "a drag is in flight, and this is a drop zone" — true regardless of the latch |
-| "Drop `<label>` here" + `-over` classes | `isPointerOver` | "release now and it lands here" |
+| "Release to attach `<label>`" + `-over` classes | `isPointerOver` | "release now and it lands here" |
 
 `isPointerOver` is only ever set inside the armed effect and is reset in its
 cleanup, so it is already an armed-*and*-over signal. The specific promise is
 therefore still latch-gated, for free, with no new state.
+
+**Amendment: the two tiers must differ in *wording*, not just in styling.** As
+first written the second tier read "Drop `<label>` here" for a single entity and
+fell back to "Drop N custom entities here" for more than one. Against a base tier
+of "Drop custom entity here", that multi-entity string differs only in the
+middle — same opening word, same shape, same length. Read peripherally, mid-drag,
+with a drag ghost under the cursor, it is indistinguishable, and every
+multi-entity drag therefore looked like the over state was broken. It was
+reported as exactly that.
+
+So the second tier now leads with a different verb and always names its payload:
+"Release to attach Car 123 and Area A". "Release" is also the affordance the user
+is looking for, which the previous wording never stated. Do not collapse the
+multi-entity case back to a count — the chips underneath already carry the full
+list; the headline's only job is to be unmistakable. The CSS delta was widened
+for the same reason (2px→4px ring, inverted card): a hue shift and one pixel is
+not a state change anyone can see while concentrating on a drag.
+
+`DragGesture` in `MagicChat.stories.tsx` pins this. It drives a real held gesture
+and asserts the exact headline for one- and two-entity payloads, so a regression
+fails `npm test` rather than waiting to be noticed by eye.
 
 **Rejected: a distinct "disarmed" overlay variant** — dimmed, no `＋`, text like
 "drag already released" — shown when the prop is non-empty but the latch is

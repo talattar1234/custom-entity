@@ -1,18 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { MagicChat, entityLabel } from '../magic-chat';
+import { useCallback, useMemo, useRef, useState } from "react";
+import { MagicChat, entityLabel } from "../magic-chat";
 import type {
   ChatMessage,
   CustomEntity,
   CustomEntityDragCancelReason,
   CustomEntityDropDebug,
   CustomEntityComponentRegistry,
-} from '../magic-chat';
-import { MapPanel } from './MapPanel';
-import type { MapApi } from './MapPanel';
-import { DragGhost } from './DragGhost';
-import { DebugBar } from './DebugBar';
-import { areaEntity, carEntity } from './entities';
-import type { AircraftEntity, AreaEntity, CarEntity } from './entities';
+} from "../magic-chat";
+import { MapPanel } from "./MapPanel";
+import type { MapApi } from "./MapPanel";
+import { DragGhost } from "./DragGhost";
+import { DebugBar } from "./DebugBar";
+import { areaEntity, carEntity } from "./entities";
+import type { AircraftEntity, AreaEntity, CarEntity } from "./entities";
 import {
   AircraftCard,
   AircraftChip,
@@ -20,34 +20,34 @@ import {
   AreaChip,
   CarCard,
   CarChip,
-} from './entityRenderers';
-import type { ZoomTo } from './entityRenderers';
-import './host.css';
+} from "./entityRenderers";
+import type { ZoomTo } from "./entityRenderers";
+import "./host.css";
 
 const seedMessages: ChatMessage[] = [
   {
-    id: 'seed-1',
-    author: 'them',
-    authorName: 'Dana',
-    text: 'Morning — anything moving in sector 4?',
+    id: "seed-1",
+    author: "them",
+    authorName: "Dana",
+    text: "Morning — anything moving in sector 4?",
     entities: [],
-    sentAt: '08:41',
+    sentAt: "08:41",
   },
   {
-    id: 'seed-2',
-    author: 'me',
-    authorName: 'You',
-    text: 'Checking the map now.',
+    id: "seed-2",
+    author: "me",
+    authorName: "You",
+    text: "Checking the map now.",
     entities: [],
-    sentAt: '08:42',
+    sentAt: "08:42",
   },
   {
-    id: 'seed-3',
-    author: 'them',
-    authorName: 'Dana',
-    text: 'Send me whatever you find — just drag it in here.',
+    id: "seed-3",
+    author: "them",
+    authorName: "Dana",
+    text: "Send me whatever you find — just drag it in here.",
     entities: [],
-    sentAt: '08:43',
+    sentAt: "08:43",
   },
 ];
 
@@ -65,20 +65,26 @@ const seedMessages: ChatMessage[] = [
 export function HostApp() {
   const mapRef = useRef<MapApi>(null);
 
-  const [dragCustomEntities, setDragCustomEntities] = useState<CustomEntity[]>([]);
-  const [dragOrigin, setDragOrigin] = useState<{ x: number; y: number } | null>(null);
-  const [lastOutcome, setLastOutcome] = useState('—');
+  const [dragCustomEntities, setDragCustomEntities] = useState<CustomEntity[]>(
+    [],
+  );
+  const [dragOrigin, setDragOrigin] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [lastOutcome, setLastOutcome] = useState("—");
 
   // Diagnostics for the debug bar. Nothing in the drag depends on these.
-  const [chatDebug, setChatDebug] = useState<CustomEntityDropDebug | null>(null);
+  const [chatDebug, setChatDebug] = useState<CustomEntityDropDebug | null>(
+    null,
+  );
   const [mapDragLocked, setMapDragLocked] = useState(false);
-  const [lastPress, setLastPress] = useState('—');
+  const [lastPress, setLastPress] = useState("—");
 
   const startDrag = useCallback(
     (entities: CustomEntity[], point: { clientX: number; clientY: number }) => {
       setDragCustomEntities(entities);
       setDragOrigin({ x: point.clientX, y: point.clientY });
-      setLastOutcome('dragging…');
+      setLastOutcome("dragging…");
     },
     [],
   );
@@ -135,7 +141,8 @@ export function HostApp() {
       <header className="host-header">
         <h1>Host application</h1>
         <p>
-          Press and hold a map object, drag it into MagicChat on the right, and release.
+          Press and hold a map object, drag it into MagicChat on the right, and
+          release.
         </p>
       </header>
 
@@ -149,7 +156,7 @@ export function HostApp() {
           className="host-group-source"
           onPointerDown={(event) => {
             event.preventDefault();
-            setLastPress('Car + Area · toolbar');
+            setLastPress("Car + Area · toolbar");
             startDrag([carEntity, areaEntity], event);
           }}
         >
@@ -157,8 +164,8 @@ export function HostApp() {
         </button>
 
         <span className="host-status">
-          The floating debug panel splits the two sides of the contract: what the
-          host does, and what MagicChat does in response.
+          The floating debug panel splits the two sides of the contract: what
+          the host does, and what MagicChat does in response.
         </span>
       </div>
 
@@ -188,13 +195,17 @@ export function HostApp() {
             customEntityComponents={customEntityComponents}
             dragCustomEntities={dragCustomEntities}
             onDragCustomEntitiesConsumed={(entities) =>
-              endDrag(`consumed ${entities.length} entit${entities.length === 1 ? 'y' : 'ies'}`)
+              endDrag(
+                `consumed ${entities.length} entit${entities.length === 1 ? "y" : "ies"}`,
+              )
             }
-            onCustomEntityDragCancelled={(reason: CustomEntityDragCancelReason) =>
-              endDrag(reason)
-            }
+            onCustomEntityDragCancelled={(
+              reason: CustomEntityDragCancelReason,
+            ) => endDrag(reason)}
             initialMessages={seedMessages}
-            onSendMessage={(message) => console.log('[host] message sent', message)}
+            onSendMessage={(message) =>
+              console.log("[host] message sent", message)
+            }
             onDebugChange={setChatDebug}
           />
         </aside>

@@ -203,7 +203,7 @@ The prop is an array the whole way through:
 setDragCustomEntities([car, area]);
 ```
 
-The overlay reads "Drop 2 custom entities here" and both chips land in the
+The overlay reads "Release to attach Car 123 and Area A" and both chips land in the
 composer.
 
 ## When the source is a canvas or WebGL object

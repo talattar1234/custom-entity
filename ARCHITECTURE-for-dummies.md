@@ -55,20 +55,26 @@ The prop is called `dragCustomEntities`. It's an array.
 
 That's the entire handshake. You set the array; you empty it when told.
 
+**"Right now" is literal.** A non-empty array does not mean "a car is pending" or
+"a car is selected" — it means *a mouse button or finger is physically down on a
+car at this moment*. So you set the array from a `pointerdown` handler, never
+from a click, an effect, or a Storybook arg. See §8.5 — this one catches
+everybody.
+
 ---
 
 ## 4. The whole flow
 
 ```
   1. User presses on your car                  ← you notice this
-     you: setDragging([car])
+     you: setDragging([car])                      (button still held — §8.5)
 
   2. MagicChat sees a non-empty array
      → shows "Drop custom entity here"
      → starts watching the mouse
 
-  3. Mouse moves over the chat
-     → overlay changes to "Drop Car 123 here"
+  3. Mouse moves over the chat, button still held
+     → overlay changes to "Release to attach Car 123"
 
   4. User lets go
      ├── over the chat  → onDragCustomEntitiesConsumed()   ✅ attached
@@ -195,7 +201,7 @@ release, twice in a row.)*
 
 ---
 
-## 8. The four things that will actually bite you
+## 8. The five things that will actually bite you
 
 ### 1. Always empty the array
 
@@ -244,6 +250,35 @@ answer is always "your preview" and never "the chat", so the drop never happens.
 Otherwise a finger-drag is treated as *scrolling* the page, and the browser
 cancels your drag halfway through. Mouse works fine; touch mysteriously doesn't.
 
+### 5. Set the array while the button is still down
+
+```tsx
+// ✗ BAD — no button is held at any point. Dead on the first mouse move.
+<button onClick={() => setDragging([car])}>Drag the car</button>
+useEffect(() => setDragging([car]), []);
+const meta = { args: { dragCustomEntities: [car] } };   // ← Storybook too
+
+// ✓ GOOD — the button is physically down when the array is set
+<div onPointerDown={() => setDragging([car])}>🚗</div>
+```
+
+A non-empty array means *"a button is down right now"* (§3). MagicChat enforces
+that: a mouse that moves with **no button held** is, by definition, not a drag, so
+the gesture is cancelled on the spot and the drop target goes inert.
+
+> **Symptom:** the overlay appears and says "Drop custom entity here", but it
+> never changes to "Release to attach Car 123" no matter where you move the
+> mouse. Nothing is clickable, nothing responds.
+> **Cause:** the array was set outside a press — a click handler, an effect, or
+> static Storybook args.
+
+Once that happens the drop target stays inert until you empty the array and start
+a real press. You can't "wake it up" by moving the mouse back.
+
+You don't have to set it on `pointerdown` *exactly* — anywhere inside the held
+gesture is fine, so waiting a few pixels to tell a click from a drag works. The
+button just has to still be down.
+
 ---
 
 ## 9. The overlay has two states
@@ -253,10 +288,13 @@ Small thing, worth knowing, because it tells you what MagicChat is thinking:
 | What you see | What it means |
 | --- | --- |
 | "Drop custom entity here" | your array isn't empty — a drag is happening somewhere |
-| "Drop **Car 123** here" + a stronger border | the mouse is over the chat *right now*, and letting go will work |
+| "Release to attach **Car 123**" + a solid blue border | the button is still down, the mouse is over the chat *right now*, and letting go will work |
 
 The first one just follows your prop. The second one only appears when a drop
 would genuinely land, so it never promises something it can't do.
+
+If you only ever see the first one, you're hitting §8.5 — the array was set
+without a button held, so the second state is unreachable.
 
 ---
 

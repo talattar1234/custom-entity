@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { action } from 'storybook/actions';
-import { fn } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 
 import { MagicChat } from './index';
 import type {
@@ -295,11 +295,193 @@ export const CustomEntityComponents: Story = {
  * because it follows the prop and this story never clears it. A real host
  * clears on that callback, which is what dismisses the overlay; leaving it
  * stranded is exactly the failure the contract warns about, on show here.
+ *
+ * CONSEQUENCE: this story can never show the second overlay tier. No button is
+ * ever held, so `isPointerOver` cannot become true and hovering the chat does
+ * nothing — the panel you are looking at is painted over an inert drop target.
+ * That is not a bug in the story, but it is easy to mistake for one. See
+ * `DragGesture` below for the live version.
  */
 export const DragCustomEntities: Story = {
   args: {
     initialMessages: conversation,
     // Two entities, because nothing in the design assumes one per drag.
     dragCustomEntities: [carEntity, areaEntity],
+  },
+};
+
+/* ------------------------------------------------------------------ *
+ * A real, pressed drag gesture
+ * ------------------------------------------------------------------ */
+
+/**
+ * A minimal host with genuine drag sources.
+ *
+ * `DragCustomEntities` above sets the array as static story data. That is
+ * enough to paint the overlay, but it can never reach the `isPointerOver`
+ * state: no button is ever held, so MagicChat's first `pointermove` sees
+ * `buttons === 0`, concludes the gesture is over, and disarms.
+ *
+ * This is the other half of the contract — a host that sets the array on
+ * `pointerdown` (button still down) and clears it on *both* resolve callbacks.
+ * That is what makes the cycle repeatable:
+ *
+ *   idle → armed → over → dropped → (host clears) → idle → …
+ */
+function HostWithDragSources({
+  onDragCustomEntitiesConsumed,
+  onCustomEntityDragCancelled,
+  ...props
+}: MagicChatProps) {
+  const [dragging, setDragging] = useState<CustomEntity[]>([]);
+
+  // Both callbacks empty the array — exactly one of them fires per gesture, and
+  // the empty array is the only thing that returns the latch to `idle`.
+  const consumed = useCallback(
+    (entities: CustomEntity[]) => {
+      setDragging([]);
+      onDragCustomEntitiesConsumed?.(entities);
+    },
+    [onDragCustomEntitiesConsumed],
+  );
+
+  const cancelled = useCallback<NonNullable<MagicChatProps['onCustomEntityDragCancelled']>>(
+    (reason) => {
+      setDragging([]);
+      onCustomEntityDragCancelled?.(reason);
+    },
+    [onCustomEntityDragCancelled],
+  );
+
+  return (
+    <div style={{ ...fillCell, gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+      <div style={{ display: 'flex', gap: 8, padding: 12, background: '#f8fafc' }}>
+        {/*
+          `touchAction: none` keeps a finger-drag from being claimed by the page
+          scroller, which would cancel the gesture halfway through.
+          `preventDefault` stops the browser's native text/image drag.
+        */}
+        <button
+          type="button"
+          style={{ touchAction: 'none', cursor: 'grab' }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setDragging([carEntity]);
+          }}
+        >
+          🚗 drag one
+        </button>
+        <button
+          type="button"
+          style={{ touchAction: 'none', cursor: 'grab' }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            setDragging([carEntity, areaEntity]);
+          }}
+        >
+          🚗 📍 drag two
+        </button>
+      </div>
+
+      <MagicChat
+        {...props}
+        dragCustomEntities={dragging}
+        onDragCustomEntitiesConsumed={consumed}
+        onCustomEntityDragCancelled={cancelled}
+      />
+    </div>
+  );
+}
+
+/**
+ * Drive one pointer gesture by hand.
+ *
+ * Real `PointerEvent`s rather than `userEvent`, because the thing under test is
+ * specifically `buttons`: MagicChat distinguishes a live drag from a stale array
+ * by whether a button is held, and that is the bit a convenience helper hides.
+ *
+ * Dispatching on an element still reaches the hook — its listeners are on
+ * `document` in the *capture* phase, which runs root-first before the target.
+ */
+function pointer(
+  target: Element | Document,
+  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  clientX: number,
+  clientY: number,
+  buttons: number,
+) {
+  target.dispatchEvent(
+    new PointerEvent(type, {
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+      clientX,
+      clientY,
+      buttons,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }),
+  );
+}
+
+const centreOf = (element: Element) => {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+};
+
+/**
+ * The drag gesture end to end, twice, with different payload sizes.
+ *
+ * Covers what no other story can: the `isPointerOver` tier of the overlay, and
+ * the fact that the latch re-arms once the host clears the array. Both are
+ * regressions waiting to happen — the multi-entity headline used to collapse to
+ * a bare count ("Drop 2 custom entities here"), which differs from the base
+ * string only in the middle and so read as "nothing changed" mid-drag.
+ */
+export const DragGesture: Story = {
+  args: {
+    initialMessages: conversation,
+  },
+  render: (args) => <HostWithDragSources {...args} />,
+  play: async ({ canvasElement, args, step }) => {
+    const canvas = within(canvasElement);
+    const chat = canvasElement.querySelector('.mc-chat');
+    if (!chat) throw new Error('chat element not found');
+
+    const drag = async (sourceName: RegExp, expected: RegExp) => {
+      const source = canvas.getByRole('button', { name: sourceName });
+      const from = centreOf(source);
+      pointer(source, 'pointerdown', from.x, from.y, 1);
+
+      // The overlay is prop-driven and appears at once; the latch arms one
+      // commit later, so wait for it before moving (DECISIONS.md §14).
+      await waitFor(() => expect(canvas.getByText('Drop custom entity here')).toBeInTheDocument());
+
+      const to = centreOf(chat);
+      pointer(document, 'pointermove', to.x, to.y, 1);
+      pointer(document, 'pointermove', to.x + 1, to.y + 1, 1);
+
+      await waitFor(() => expect(canvas.getByText(expected)).toBeInTheDocument());
+      expect(chat).toHaveClass('mc-chat-drag-over');
+
+      pointer(document, 'pointerup', to.x, to.y, 0);
+
+      // The host clears on the consumed callback, which dismisses the overlay
+      // and returns the latch to `idle`.
+      await waitFor(() => expect(canvas.queryByText('Drop custom entity here')).toBeNull());
+    };
+
+    await step('one entity: the headline names it', async () => {
+      await drag(/drag one/, /^Release to attach Car 123$/);
+      await expect(args.onDragCustomEntitiesConsumed).toHaveBeenCalledTimes(1);
+    });
+
+    await step('two entities: the headline still names them', async () => {
+      // Re-arming only works because the host emptied the array after the first
+      // gesture — a spent latch stays spent until it sees an empty array.
+      await drag(/drag two/, /^Release to attach Car 123 and Area A$/);
+      await expect(args.onDragCustomEntitiesConsumed).toHaveBeenCalledTimes(2);
+    });
   },
 };
