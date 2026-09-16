@@ -12,11 +12,13 @@ simplifications have specific, known failure modes.
 
 | Document | Read it when |
 | --- | --- |
+| [`DOCS.md`](./DOCS.md) | You don't know which of these to open — it is the one-line index of every document here. |
 | [`ARCHITECTURE-for-dummies.md`](./ARCHITECTURE-for-dummies.md) | You want the plain-English version first: what this is, the one core idea, a runnable minimal example, and the four things that bite. |
 | [`README.md`](./README.md) | Orienting: what the component does, the entity model, the drag/drop mechanism end to end, the edge-case table. Start here. |
 | [`USAGE.md`](./USAGE.md) | Wiring MagicChat into a host — a complete minimal example plus the three things that will bite you. |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Before editing the code: module map (§2, says which file to touch for which change), drag lifecycle (§3), public API (§4), state ownership (§5), extension recipes (§6), pitfalls (§7), verification checklist (§9). |
 | [`DECISIONS.md`](./DECISIONS.md) | Before changing the *mechanism*: 15 numbered decisions with what was rejected and why. Check here before "simplifying" anything in `useCustomEntityDropTarget.ts` — §15 covers the drag API itself. |
+| [`IMPLEMENTATION-SPEC.md`](./IMPLEMENTATION-SPEC.md) | You are adding this drag & drop to a *different*, already-existing chat component: a standalone blueprint of the mechanism, the ref API, the integration points, the invariants and the CSS. Needs no source reading. |
 
 Keep those files current when behaviour changes — they are the spec, not notes.
 

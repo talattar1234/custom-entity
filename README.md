@@ -17,11 +17,13 @@ entities at once.
 
 | Document | Read it when |
 | --- | --- |
+| [`DOCS.md`](./DOCS.md) | You want the one-line index of every document in this repo. |
 | [`ARCHITECTURE-for-dummies.md`](./ARCHITECTURE-for-dummies.md) | You are new to this and want it in plain English, with a runnable minimal example. |
 | This file | Learning what the component does and how to use it. |
 | [`USAGE.md`](./USAGE.md) | You just want to wire MagicChat into a host — a complete minimal example plus the two things that will bite you. |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Before changing the code: module map, state ownership, invariants, extension recipes, pitfalls. |
 | [`DECISIONS.md`](./DECISIONS.md) | Before changing the *mechanism*: what was rejected and why. Several obvious simplifications have specific failure modes. |
+| [`IMPLEMENTATION-SPEC.md`](./IMPLEMENTATION-SPEC.md) | You are adding this drag & drop to a *different* chat component that already exists — a standalone blueprint of the mechanism, the ref API and the integration points. |
 
 ---
 
