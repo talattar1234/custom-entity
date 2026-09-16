@@ -174,16 +174,18 @@ type Story = StoryObj<typeof meta>;
 /* ------------------------------------------------------------------ *
  * Simplest
  *
- * Deliberately self-contained: its own one-field entity, its own two
+ * Deliberately self-contained: its own tiny entity, its own two
  * renderers, its own registry. Every other story borrows the demo app's
  * schemas and `host.css`, which is realistic but hides how little is
  * actually required. Nothing below is imported from `src/host`.
  * ------------------------------------------------------------------ */
 
 /** The entity. Any JSON — MagicChat never looks inside `properties`. */
-const noteEntity: CustomEntity<{ text: string }> = {
+type NoteEntity = CustomEntity<{ id: string; text: string }>;
+
+const noteEntity: NoteEntity = {
   type: 'Note',
-  properties: { text: 'Hello from the host' },
+  properties: { id: 'note-1', text: 'Hello from the host' },
 };
 
 /**
@@ -199,7 +201,17 @@ const simplestComponents: CustomEntityComponentRegistry = {
     composer: ({ entity }) => <span>📝 {entity.properties.text}</span>,
     message: ({ entity }) => <div>📝 {entity.properties.text}</div>,
     // Only used to name the entity in the drop overlay.
-    label: (entity: CustomEntity<{ text: string }>) => entity.properties.text,
+    label: (entity: NoteEntity) => entity.properties.text,
+    /*
+      Optional, and the reason this story's button can be dragged twice without
+      collecting two identical chips: `getId` is the host telling MagicChat what
+      makes two entities the same one. MagicChat cannot work that out — it never
+      looks inside `properties` — so with no `getId` there is no de-duplication
+      and a second drop attaches a second copy. That is a legitimate choice for
+      an entity with no identity (`DECISIONS.md` §9); it is the wrong one here,
+      where every drag is the same note.
+    */
+    getId: (entity: NoteEntity) => entity.properties.id,
   },
 };
 

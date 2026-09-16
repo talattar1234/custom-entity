@@ -228,6 +228,25 @@ the overlay say "Release to attach Car 123" and letting the composer de-duplicat
 Both are optional; `label` falls back to `entity.type` and without `getId` there
 is simply no de-duplication.
 
+**Why `getId` is not mandatory.** Tempting, because a host that forgets it gets
+two identical chips from two drags of the same object, which reads as a bug. It
+is still the wrong trade. A required field must be one the host can always answer
+honestly, and for an entity with no identity — a scratch note, a snapshot of a
+free-drawn shape — there is no answer. The workarounds a mandatory field would
+force are worse than its absence: `getId: () => crypto.randomUUID()` claims an
+identity while disabling the de-duplication it was made mandatory for, and
+`getId: JSON.stringify` silently merges attachments that are deliberately
+distinct (§9). Note also which way each failure points. No `getId` attaches a
+second chip — visible, and the user removes it with the chip's × (§16). A wrong
+`getId` makes a drop do nothing at all, with no feedback anywhere. The optional
+field fails in the safe direction, so the floor for a minimal registry stays at
+two renderers and `label`/`getId` are consistently "supply it when you can".
+
+Content-equality as an implicit default (deep-compare `properties` when no
+`getId`) was considered and rejected for the same reason as `JSON.stringify`
+above: it is schema-agnostic enough to implement, but it decides a policy
+question the host owns, and §9 says attaching the same entity twice is allowed.
+
 **Why the registry's generic is erased to `any`.** Definitions for different
 entity types have to coexist in one object. Hosts keep their typing by writing
 renderers as typed components (`CustomEntityComposerProps<CarEntity>`), which is
