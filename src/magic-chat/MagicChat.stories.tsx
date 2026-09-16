@@ -221,8 +221,13 @@ const simplestComponents: CustomEntityComponentRegistry = {
  * `onPointerDown` is the whole contract: the call must happen while the button
  * is physically held, which is why this cannot be a click handler. There is no
  * drag state here and nothing to clear afterwards.
+ *
+ * Takes no props and spreads no story args on purpose: every other host below
+ * threads `MagicChatProps` through so the Controls panel can drive it, and that
+ * plumbing is Storybook's, not the integration's. Here the only prop MagicChat
+ * actually requires is passed where a real host would pass it.
  */
-function SimplestHost(props: MagicChatProps) {
+function SimplestHost() {
   const chatRef = useRef<MagicChatHandle>(null);
 
   return (
@@ -245,7 +250,7 @@ function SimplestHost(props: MagicChatProps) {
         </button>
       </div>
 
-      <MagicChat ref={chatRef} {...props} />
+      <MagicChat ref={chatRef} customEntityComponents={simplestComponents} />
     </div>
   );
 }
@@ -257,10 +262,7 @@ function SimplestHost(props: MagicChatProps) {
  * the demo app's richer entities, and `DragGesture` drives it automatically.
  */
 export const Simplest: Story = {
-  args: {
-    customEntityComponents: simplestComponents,
-  },
-  render: (args) => <SimplestHost {...args} />,
+  render: () => <SimplestHost />,
 };
 
 /* ------------------------------------------------------------------ *
