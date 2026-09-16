@@ -137,15 +137,12 @@
 
 /* ---------- entity renderers ---------- */
 
+/* Content only: the pill, and the remove button, come from MagicChat's
+   `.mc-chip` shell around this. */
 .entity-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px 4px 8px;
-  border-radius: 999px;
-  background: #eef4ff;
-  border: 1px solid #c7d9f8;
-  font-size: 12px;
 }
 
 .entity-chip-icon {
@@ -160,21 +157,6 @@
 .entity-chip-subtitle {
   color: #6b7280;
   font-size: 11px;
-}
-
-.entity-chip-remove {
-  font: inherit;
-  font-size: 14px;
-  line-height: 1;
-  border: 0;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
-  padding: 0 2px;
-}
-
-.entity-chip-remove:hover {
-  color: #dc2626;
 }
 
 .entity-card {

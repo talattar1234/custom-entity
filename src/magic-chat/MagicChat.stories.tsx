@@ -172,6 +172,86 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /* ------------------------------------------------------------------ *
+ * Simplest
+ *
+ * Deliberately self-contained: its own one-field entity, its own two
+ * renderers, its own registry. Every other story borrows the demo app's
+ * schemas and `host.css`, which is realistic but hides how little is
+ * actually required. Nothing below is imported from `src/host`.
+ * ------------------------------------------------------------------ */
+
+/** The entity. Any JSON — MagicChat never looks inside `properties`. */
+const noteEntity: CustomEntity<{ text: string }> = {
+  type: 'Note',
+  properties: { text: 'Hello from the host' },
+};
+
+/**
+ * The two renderers, at module scope so their component identities are stable.
+ * Declared inline in the story they would be new component types every render,
+ * and React would remount rather than update — the same trap `useMemo` guards
+ * against in `HostApp`.
+ */
+const simplestComponents: CustomEntityComponentRegistry = {
+  Note: {
+    // Content only: MagicChat draws the chip around this and puts the × on it,
+    // so the host renderer never has to know how detaching works.
+    composer: ({ entity }) => <span>📝 {entity.properties.text}</span>,
+    message: ({ entity }) => <div>📝 {entity.properties.text}</div>,
+    // Only used to name the entity in the drop overlay.
+    label: (entity: CustomEntity<{ text: string }>) => entity.properties.text,
+  },
+};
+
+/**
+ * One button, one entity, one line of host code.
+ *
+ * `onPointerDown` is the whole contract: the call must happen while the button
+ * is physically held, which is why this cannot be a click handler. There is no
+ * drag state here and nothing to clear afterwards.
+ */
+function SimplestHost(props: MagicChatProps) {
+  const chatRef = useRef<MagicChatHandle>(null);
+
+  return (
+    <div style={{ ...fillCell, gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+      <div style={{ padding: 12, background: '#f8fafc' }}>
+        <button
+          type="button"
+          /*
+            `touchAction: none` stops a finger-drag being claimed by the page
+            scroller mid-gesture; `preventDefault` stops the browser's own
+            native text drag.
+          */
+          style={{ touchAction: 'none', cursor: 'grab' }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            chatRef.current?.startCustomEntityDrag([noteEntity]);
+          }}
+        >
+          📝 press and drag me into the chat
+        </button>
+      </div>
+
+      <MagicChat ref={chatRef} {...props} />
+    </div>
+  );
+}
+
+/**
+ * The smallest host there is: press the button, drag onto the chat, release.
+ *
+ * Read this one first. `StartCustomEntityDrag` below is the same mechanism with
+ * the demo app's richer entities, and `DragGesture` drives it automatically.
+ */
+export const Simplest: Story = {
+  args: {
+    customEntityComponents: simplestComponents,
+  },
+  render: (args) => <SimplestHost {...args} />,
+};
+
+/* ------------------------------------------------------------------ *
  * Default
  * ------------------------------------------------------------------ */
 
@@ -199,7 +279,7 @@ const legacyMarkerEntity: CustomEntity = {
 /** Replaces MagicChat's built-in "Unsupported entity" chip. */
 function UnknownEntity({ entity, surface }: UnknownEntityProps) {
   return (
-    <span className="entity-chip" style={{ borderStyle: 'dashed', color: '#9ca3af' }}>
+    <span className="entity-chip" style={{ color: '#9ca3af', fontStyle: 'italic' }}>
       <span className="entity-chip-icon">❓</span>
       <span className="entity-chip-title">{entity.type}</span>
       <span className="entity-chip-subtitle">no renderer ({surface})</span>

@@ -39,13 +39,11 @@ const car: CarEntity = {
 
 /* 2 ── Two renderers: the chip before sending, the card inside a message. */
 
-function CarChip({ entity, remove }: CustomEntityComposerProps<CarEntity>) {
-  return (
-    <span>
-      🚗 {entity.properties.name}
-      <button onClick={remove}>×</button>
-    </span>
-  );
+// Content only. MagicChat draws the chip around this and puts the × on it —
+// detaching is its state, so it offers the control. (`remove` is still in the
+// props if you want a second detach affordance of your own; most hosts don't.)
+function CarChip({ entity }: CustomEntityComposerProps<CarEntity>) {
+  return <span>🚗 {entity.properties.name}</span>;
 }
 
 function CarCard({ entity }: CustomEntityMessageProps<CarEntity>) {

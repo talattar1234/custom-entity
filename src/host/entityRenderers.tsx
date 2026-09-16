@@ -25,30 +25,26 @@ export type ZoomTo = (
 
 /* ---------- shared chrome (host styling choices, not MagicChat's) ---------- */
 
+/*
+  Content only — no pill, and deliberately no ×. MagicChat wraps every composer
+  renderer in its own chip shell and puts the detach button there (see
+  `CustomEntityComposerProps.remove`), so a host drawing its own would be the
+  second one in the same chip.
+*/
 function Chip({
   icon,
   title,
   subtitle,
-  onRemove,
 }: {
   icon: string;
   title: string;
   subtitle: string;
-  onRemove: () => void;
 }) {
   return (
     <span className="entity-chip">
       <span className="entity-chip-icon">{icon}</span>
       <span className="entity-chip-title">{title}</span>
       <span className="entity-chip-subtitle">{subtitle}</span>
-      <button
-        type="button"
-        className="entity-chip-remove"
-        onClick={onRemove}
-        aria-label={`Remove ${title}`}
-      >
-        ×
-      </button>
     </span>
   );
 }
@@ -85,16 +81,12 @@ function Card({
 
 /* ---------- Car ---------- */
 
-export function CarChip({
-  entity,
-  remove,
-}: CustomEntityComposerProps<CarEntity>) {
+export function CarChip({ entity }: CustomEntityComposerProps<CarEntity>) {
   return (
     <Chip
       icon="🚗"
       title={entity.properties.name}
       subtitle={entity.properties.status}
-      onRemove={remove}
     />
   );
 }
@@ -125,16 +117,12 @@ export function CarCard({
 
 /* ---------- Aircraft ---------- */
 
-export function AircraftChip({
-  entity,
-  remove,
-}: CustomEntityComposerProps<AircraftEntity>) {
+export function AircraftChip({ entity }: CustomEntityComposerProps<AircraftEntity>) {
   return (
     <Chip
       icon="✈️"
       title={entity.properties.callsign}
       subtitle={`${entity.properties.altitudeFt} ft`}
-      onRemove={remove}
     />
   );
 }
@@ -166,16 +154,12 @@ export function AircraftCard({
 
 /* ---------- Area ---------- */
 
-export function AreaChip({
-  entity,
-  remove,
-}: CustomEntityComposerProps<AreaEntity>) {
+export function AreaChip({ entity }: CustomEntityComposerProps<AreaEntity>) {
   return (
     <Chip
       icon="📍"
       title={entity.properties.name}
       subtitle={entity.properties.classification}
-      onRemove={remove}
     />
   );
 }

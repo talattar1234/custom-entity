@@ -559,3 +559,47 @@ already done the job.
   callbacks leaves its *own* ghost on screen, and MagicChat keeps working. The
   degraded state is now the host's chrome misbehaving rather than the component
   being wedged.
+
+---
+
+## 16. The chip and its × belong to MagicChat, the contents to the host
+
+**Decision.** `ComposerEntity` renders a `.mc-chip` shell with a `.mc-chip-remove`
+button and puts the host's `composer` renderer *inside* it. The renderer draws
+contents only — icon, name, whatever — and does not draw a ×.
+
+```tsx
+composer: ({ entity }) => <span>🚗 {entity.properties.name}</span>   // that is all
+```
+
+**Why.** Ownership of the control should follow ownership of the state. The
+attachment list is MagicChat's (`ARCHITECTURE.md` §5), so "take this back off the
+message" is MagicChat's affordance to offer. Delegating it to the host made a
+guaranteed capability optional:
+
+- A renderer that drew no ×, or drew one and forgot to wire `remove`, stranded an
+  entity in the composer with no way out. The chat looked broken; the bug was in
+  host code MagicChat never sees.
+- The fallback chip for an unregistered type had **no** × at all — nothing was
+  there to draw one. An entity whose renderer was missing was also unremovable,
+  which is exactly the case where you most want to get rid of it.
+- Every host paid for the same button, and it looked slightly different in each
+  entity type. Placement, hit area and the `aria-label` are now uniform for free.
+
+**What was rejected.**
+
+- *Drop `remove` from `CustomEntityComposerProps` entirely.* It is a two-word
+  prop with a real use — a host whose chip is a wider card may want its own
+  "clear" inside that chrome — and removing it would be an API break that buys
+  nothing. It stays, documented as the escape hatch rather than the primary
+  affordance; a host that ignores it (the common case) still gets a working ×.
+- *Make the shell opt-out (`chrome: false`).* A flag whose only job is to switch
+  off the guarantee this decision exists to make. The escape hatch above covers
+  the real need without letting a host reach the unremovable state again.
+- *Leave the shell to the host but default `remove` to a no-op.* Same stranding,
+  now silent rather than a type error.
+
+**Cost.** Hosts lose control of the pill itself — padding, radius, background
+come from `magic-chat.css`, not `host.css`. That is the intended trade: the chip
+is chat chrome, and the host's `.entity-chip` is now content-only styling. A host
+that wants a fundamentally different chip shape has to restyle `.mc-chip`.

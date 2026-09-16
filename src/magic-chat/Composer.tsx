@@ -16,9 +16,9 @@ interface ComposerProps {
 /**
  * The pre-send area: a bar of attached entities above a text input.
  *
- * Each chip's appearance comes entirely from the host's `composer` renderer for
- * that entity type. The only thing MagicChat contributes is the `remove`
- * callback handed to it.
+ * A chip's *contents* come from the host's `composer` renderer for that entity
+ * type; the chip shell around them, and the × that detaches the attachment,
+ * are MagicChat's — see `ComposerEntity`.
  */
 export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function Composer(
   {

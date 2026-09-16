@@ -63,7 +63,7 @@ Two consequences that look like quirks but are load-bearing:
 | `magic-chat/useCustomEntityDropTarget.ts` | **The mechanism.** All pointer handling, the held-pointer tracker, the drag payload and the latch. Chat-agnostic. | Changing drag/drop behaviour. Read this first. |
 | `magic-chat/types.ts` | Every public type. The contract. | Changing the API surface. |
 | `magic-chat/MagicChat.tsx` | Composition root: wires hook → drop zone, owns messages/composer/attachments state, renders the overlay, exposes the ref handle. | Changing chat behaviour or the overlay. |
-| `magic-chat/EntityRenderer.tsx` | Registry lookup for both surfaces + unknown-type fallback + `entityLabel`. | Changing how renderers are resolved. |
+| `magic-chat/EntityRenderer.tsx` | Registry lookup for both surfaces + unknown-type fallback + `entityLabel` + the composer chip shell and its ×. | Changing how renderers are resolved, or the chip chrome. |
 | `magic-chat/Composer.tsx` | Chip bar, textarea, Send. Presentational. | Changing the pre-send UI. |
 | `magic-chat/MessageList.tsx` | Message bubbles + attachment rendering + autoscroll. Presentational. | Changing message display. |
 | `magic-chat/index.ts` | Public barrel. Anything not exported here is internal. | Adding to the public API. |
@@ -197,7 +197,7 @@ Everything below is exported from `src/magic-chat/index.ts`.
 | `onCustomEntityDragCancelled` | `(reason) => void` | `'released-outside' \| 'cancelled'`. Informational. |
 | `initialMessages` | `ChatMessage[]` | Seed only; messages are internal state. |
 | `onSendMessage` | `(message) => void` | Notification, not control. |
-| `renderUnknownEntity` | `ComponentType<UnknownEntityProps>` | Replaces the fallback chip. |
+| `renderUnknownEntity` | `ComponentType<UnknownEntityProps>` | Replaces the fallback chip's contents. On the composer surface it too is wrapped in MagicChat's chip shell, so an unregistered type is still removable. |
 | `onDebugChange` | `(debug: CustomEntityDropDebug) => void` | Diagnostics. See §4.1. |
 
 ### Registry entry
@@ -205,6 +205,8 @@ Everything below is exported from `src/magic-chat/index.ts`.
 ```ts
 interface CustomEntityComponentDefinition<E extends CustomEntity> {
   composer: ComponentType<CustomEntityComposerProps<E>>;  // { entity, instanceId, remove }
+                                                         // renders the chip's CONTENTS only;
+                                                         // MagicChat owns the shell and the ×
   message:  ComponentType<CustomEntityMessageProps<E>>;   // { entity, message }
   label?:   (entity: E) => string;   // overlay + ghost text; falls back to entity.type
   getId?:   (entity: E) => string;   // opt-in composer de-duplication
@@ -461,7 +463,13 @@ and confusing.
    viewport here). Synthetic events dispatched at screenshot coordinates land in
    the wrong place. Measure with `getBoundingClientRect()` first.
 
-7. **StrictMode double-mounts the map effect.** `MapPanel`'s cleanup calls
+7. **A `composer` renderer must not draw its own ×.** MagicChat wraps it in a
+   chip shell that already carries one (`DECISIONS.md` §16), so a host-drawn
+   remove button is the second in the same chip — visually wrong rather than
+   broken, but the `remove` prop is an escape hatch for extra chrome, not the
+   affordance you are expected to build.
+
+8. **StrictMode double-mounts the map effect.** `MapPanel`'s cleanup calls
    `map.remove()`, which is what keeps Leaflet from throwing "Map container is
    already initialized". Keep that cleanup if you touch the effect.
 
@@ -494,6 +502,7 @@ the list that was actually exercised — re-run it after touching the mechanism:
 | Check | Expected |
 | --- | --- |
 | Drag a marker onto the chat | `consumed 1 entity`, chip appears |
+| The × on a chip | detaches it, for every type — including one with no renderer |
 | Press a marker, before moving | overlay already painted — the call arms synchronously |
 | Mid-drag, pointer over chat | overlay reads `Release to attach <label>`, `mc-chat-drag-over` class |
 | Mid-drag, pointer outside | overlay reads `Drop custom entity here`, no `-over` class |

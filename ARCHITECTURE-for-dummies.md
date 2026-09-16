@@ -122,8 +122,12 @@ type:
 
 | Component | Where it shows up |
 | --- | --- |
-| `composer` | the small chip, before you hit Send |
+| `composer` | the *contents* of the small chip, before you hit Send |
 | `message` | the bigger card, inside a sent message |
+
+The chip itself — the pill, and the × that takes it back off — is MagicChat's.
+What's attached is MagicChat's state, so removing it is MagicChat's button. You
+only draw what goes inside.
 
 ```
   ┌─────────────────────────────┐
@@ -133,7 +137,7 @@ type:
   │  │ [Zoom to]             │  │
   │  └───────────────────────┘  │
   ├─────────────────────────────┤
-  │  🚗 Car 123 ×               │  ← `composer` component
+  │  🚗 Car 123 ×               │  ← `composer` fills the chip; × is MagicChat's
   │  [type here...]    [Send]   │
   └─────────────────────────────┘
 ```
@@ -160,11 +164,7 @@ import './magic-chat/magic-chat.css';
 // 1. How to draw a Car. Written OUTSIDE the component on purpose — see §8.
 const renderers: CustomEntityComponentRegistry = {
   Car: {
-    composer: ({ entity, remove }) => (
-      <span>
-        🚗 {entity.properties.name} <button onClick={remove}>×</button>
-      </span>
-    ),
+    composer: ({ entity }) => <span>🚗 {entity.properties.name}</span>,
     message: ({ entity }) => <div>🚗 {entity.properties.name}</div>,
     label: (entity) => entity.properties.name,   // what the overlay says
   },

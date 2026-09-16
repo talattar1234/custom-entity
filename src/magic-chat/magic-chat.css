@@ -108,6 +108,42 @@
   margin-bottom: 8px;
 }
 
+/* The attachment chip shell. MagicChat owns the pill and the ×; the host's
+   `composer` renderer only fills in `.mc-chip-content`, so detaching works the
+   same for every entity type — including one with no renderer at all. */
+.mc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 999px;
+  background: #eef4ff;
+  border: 1px solid #c7d9f8;
+  font-size: 12px;
+}
+
+.mc-chip-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-chip-remove {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0 3px;
+}
+
+.mc-chip-remove:hover {
+  color: #dc2626;
+}
+
 .mc-input-row {
   display: flex;
   gap: 8px;

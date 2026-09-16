@@ -17,7 +17,15 @@ export interface CustomEntityComposerProps<E extends CustomEntity = CustomEntity
   entity: E;
   /** MagicChat's own id for this attachment. See `AttachedEntity`. */
   instanceId: string;
-  /** Detach this entity from the composer before sending. */
+  /**
+   * Detach this entity from the composer before sending.
+   *
+   * You do NOT have to call this, and a chip should not normally draw its own
+   * ×: MagicChat wraps every composer renderer in a chip shell that already
+   * carries one. Detaching is MagicChat state, so MagicChat offers the control.
+   * This is the escape hatch for a host that wants a second one of its own
+   * (a "clear" inside a wider card, say); ignoring it is the common case.
+   */
   remove: () => void;
 }
 

@@ -241,10 +241,15 @@ which is why aborting is `cancelCustomEntityDrag()` rather than passing `[]`.
 Each entity type supplies two components. Both receive the **full** entity, so
 they can read any property and run entity-specific actions.
 
+`composer` renders only what goes *inside* the chip. The chip shell and the ×
+that detaches the attachment are MagicChat's — the attachment list is its state,
+so the removal control is its job, and it works even for a type with no renderer
+at all. See `DECISIONS.md` §16.
+
 ```tsx
 const customEntityComponents = useMemo(() => ({
   Car: {
-    composer: CarChip,                                            // chip before sending
+    composer: CarChip,                                            // chip CONTENTS before sending
     message: (props) => <CarCard {...props} zoomTo={zoomTo} />,   // inside a message
     label: (entity) => entity.properties.name,                    // used by the overlay
     getId: (entity) => entity.properties.id,                      // optional de-duplication
