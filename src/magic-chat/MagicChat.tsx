@@ -11,9 +11,6 @@ import type {
   MagicChatProps,
 } from './types';
 
-/** Stable default, so an omitted prop does not produce a new array each render. */
-const NO_ENTITIES: CustomEntity[] = [];
-
 let instanceCounter = 0;
 const nextInstanceId = () => `attached-${++instanceCounter}`;
 
@@ -50,11 +47,14 @@ function dropPrompt(labels: string[]): string {
  * MagicChat knows only the generic shape `{ type, properties }`. Everything
  * entity-specific — appearance, actions — comes from the host's renderers in
  * `customEntityComponents`.
+ *
+ * A drag is announced through the ref, not a prop:
+ * `chatRef.current.startCustomEntityDrag([entity])`, called while the button is
+ * still held. See DECISIONS.md §15 for why that is a call and not state.
  */
 export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function MagicChat(
   {
     customEntityComponents,
-    dragCustomEntities = NO_ENTITIES,
     onDragCustomEntitiesConsumed,
     onCustomEntityDragCancelled,
     initialMessages = [],
@@ -100,15 +100,22 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
   const handleDrop = useCallback(
     (entities: CustomEntity[]) => {
       attachEntities(entities);
-      // Tell the host we took them, so it can clear `dragCustomEntities`.
+      // Informational: the drop target has already disarmed itself, so there is
+      // nothing the host has to do here beyond retiring its own drag chrome.
       onDragCustomEntitiesConsumed?.(entities);
       textareaRef.current?.focus();
     },
     [attachEntities, onDragCustomEntitiesConsumed],
   );
 
-  const { dropZoneRef, isDragActive, isPointerOver } = useCustomEntityDropTarget({
+  const {
+    dropZoneRef,
+    startCustomEntityDrag,
+    cancelCustomEntityDrag,
     dragCustomEntities,
+    isDragActive,
+    isPointerOver,
+  } = useCustomEntityDropTarget({
     onDrop: handleDrop,
     onCancel: onCustomEntityDragCancelled,
     onDebug: onDebugChange,
@@ -144,11 +151,13 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
   useImperativeHandle(
     ref,
     () => ({
+      startCustomEntityDrag,
+      cancelCustomEntityDrag,
       attachEntities,
       clearComposer,
       focus: () => textareaRef.current?.focus(),
     }),
-    [attachEntities, clearComposer],
+    [startCustomEntityDrag, cancelCustomEntityDrag, attachEntities, clearComposer],
   );
 
   const overlayLabels = dragCustomEntities.map((entity) =>
@@ -191,14 +200,15 @@ export const MagicChat = forwardRef<MagicChatHandle, MagicChatProps>(function Ma
       {/*
         The drop overlay, in two tiers.
 
-        Visibility is prop-driven: `isDragActive` is simply "the host put
-        entities in `dragCustomEntities`", so the base "Drop custom entity here"
-        state is painted for the whole gesture. That claim stays true whatever
-        the mechanism's latch is doing.
+        `isDragActive` is the base "Drop custom entity here" state, painted for
+        the whole gesture. It is now the SAME fact as the latch being armed —
+        the mechanism owns the payload, so there is no longer a prop that can
+        disagree with it, and the overlay cannot outlive the gesture that
+        justified it. That is what retired the stranded-overlay failure mode.
 
         `isPointerOver` upgrades it to the named "Release to attach <label>"
-        state. That flag can only be true while the drop target is armed, so the
-        specific promise is never made when a drop would not actually land.
+        state, which can only be true while the pointer is genuinely inside the
+        zone, so the specific promise is never made when a drop would not land.
 
         The two tiers must be distinguishable at a glance, mid-drag, with a drag
         ghost under the cursor — see `dropPrompt` for why the wording and not

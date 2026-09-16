@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { action } from 'storybook/actions';
 import { expect, fn, waitFor, within } from 'storybook/test';
@@ -160,8 +160,6 @@ const meta = {
     onCustomEntityDragCancelled: fn(),
   },
   argTypes: {
-    // Editable JSON, so the drop overlay can be driven from the Controls panel.
-    dragCustomEntities: { control: 'object' },
     // Registries and render props are components — not meaningfully editable.
     customEntityComponents: { control: false },
     renderUnknownEntity: { control: false },
@@ -275,83 +273,28 @@ export const CustomEntityComponents: Story = {
 };
 
 /* ------------------------------------------------------------------ *
- * dragCustomEntities
- * ------------------------------------------------------------------ */
-
-/**
- * The drop overlay, driven straight from the prop.
- *
- * `dragCustomEntities` is the host's whole side of the drag contract: a
- * non-empty array means "a drag is in flight". MagicChat arms its drop target
- * and paints the overlay, listing each entity by its registry `label`.
- *
- * Here the array is plain story data rather than live host state, so the
- * overlay is visible without performing a drag. Edit the JSON in the Controls
- * panel — add or remove entities, or empty the array to dismiss the overlay.
- *
- * NOTE: move the mouse over the canvas and `onCustomEntityDragCancelled` fires
- * in the Actions panel — a `pointermove` with no button held means the gesture
- * is already over, so the drop target disarms. The overlay stays up anyway,
- * because it follows the prop and this story never clears it. A real host
- * clears on that callback, which is what dismisses the overlay; leaving it
- * stranded is exactly the failure the contract warns about, on show here.
- *
- * CONSEQUENCE: this story can never show the second overlay tier. No button is
- * ever held, so `isPointerOver` cannot become true and hovering the chat does
- * nothing — the panel you are looking at is painted over an inert drop target.
- * That is not a bug in the story, but it is easy to mistake for one. See
- * `DragGesture` below for the live version.
- */
-export const DragCustomEntities: Story = {
-  args: {
-    initialMessages: conversation,
-    // Two entities, because nothing in the design assumes one per drag.
-    dragCustomEntities: [carEntity, areaEntity],
-  },
-};
-
-/* ------------------------------------------------------------------ *
- * A real, pressed drag gesture
+ * startCustomEntityDrag
  * ------------------------------------------------------------------ */
 
 /**
  * A minimal host with genuine drag sources.
  *
- * `DragCustomEntities` above sets the array as static story data. That is
- * enough to paint the overlay, but it can never reach the `isPointerOver`
- * state: no button is ever held, so MagicChat's first `pointermove` sees
- * `buttons === 0`, concludes the gesture is over, and disarms.
+ * The host's whole side of the contract is one call:
+ * `chatRef.current.startCustomEntityDrag(entities)`, made from `onPointerDown`
+ * while the button is still down. There is no drag state here, and nothing to
+ * clear afterwards — the chat arms itself on the call and disarms itself on the
+ * release, so the cycle repeats on its own:
  *
- * This is the other half of the contract — a host that sets the array on
- * `pointerdown` (button still down) and clears it on *both* resolve callbacks.
- * That is what makes the cycle repeatable:
+ *   idle → armed → over → dropped → idle → …
  *
- *   idle → armed → over → dropped → (host clears) → idle → …
+ * The call returns `false` if no button is held, which is why the old
+ * static-args story cannot be written any more: a drag cannot be announced from
+ * story args, a click, or an effect. Call `startCustomEntityDrag` from the
+ * browser console and it is refused, ticking `refusedStarts` in the debug
+ * snapshot.
  */
-function HostWithDragSources({
-  onDragCustomEntitiesConsumed,
-  onCustomEntityDragCancelled,
-  ...props
-}: MagicChatProps) {
-  const [dragging, setDragging] = useState<CustomEntity[]>([]);
-
-  // Both callbacks empty the array — exactly one of them fires per gesture, and
-  // the empty array is the only thing that returns the latch to `idle`.
-  const consumed = useCallback(
-    (entities: CustomEntity[]) => {
-      setDragging([]);
-      onDragCustomEntitiesConsumed?.(entities);
-    },
-    [onDragCustomEntitiesConsumed],
-  );
-
-  const cancelled = useCallback<NonNullable<MagicChatProps['onCustomEntityDragCancelled']>>(
-    (reason) => {
-      setDragging([]);
-      onCustomEntityDragCancelled?.(reason);
-    },
-    [onCustomEntityDragCancelled],
-  );
+function HostWithDragSources(props: MagicChatProps) {
+  const chatRef = useRef<MagicChatHandle>(null);
 
   return (
     <div style={{ ...fillCell, gridTemplateRows: 'auto minmax(0, 1fr)' }}>
@@ -366,7 +309,7 @@ function HostWithDragSources({
           style={{ touchAction: 'none', cursor: 'grab' }}
           onPointerDown={(event) => {
             event.preventDefault();
-            setDragging([carEntity]);
+            chatRef.current?.startCustomEntityDrag([carEntity]);
           }}
         >
           🚗 drag one
@@ -376,22 +319,36 @@ function HostWithDragSources({
           style={{ touchAction: 'none', cursor: 'grab' }}
           onPointerDown={(event) => {
             event.preventDefault();
-            setDragging([carEntity, areaEntity]);
+            chatRef.current?.startCustomEntityDrag([carEntity, areaEntity]);
           }}
         >
           🚗 📍 drag two
         </button>
       </div>
 
-      <MagicChat
-        {...props}
-        dragCustomEntities={dragging}
-        onDragCustomEntitiesConsumed={consumed}
-        onCustomEntityDragCancelled={cancelled}
-      />
+      <MagicChat ref={chatRef} {...props} />
     </div>
   );
 }
+
+/**
+ * Press and hold a source button, drag onto the chat, release.
+ *
+ * This replaces an earlier `DragCustomEntities` story that painted the overlay
+ * from static args. That story could never reach the second overlay tier — no
+ * button was ever held — and what it displayed was a *stranded* overlay over an
+ * inert drop target: the old contract's failure mode rather than its behaviour.
+ * The imperative API makes both situations unreachable, so the only way to see
+ * the overlay is to perform a drag. That is the point.
+ *
+ * `DragGesture` below drives this same host automatically.
+ */
+export const StartCustomEntityDrag: Story = {
+  args: {
+    initialMessages: conversation,
+  },
+  render: (args) => <HostWithDragSources {...args} />,
+};
 
 /**
  * Drive one pointer gesture by hand.
@@ -433,11 +390,19 @@ const centreOf = (element: Element) => {
 /**
  * The drag gesture end to end, twice, with different payload sizes.
  *
- * Covers what no other story can: the `isPointerOver` tier of the overlay, and
- * the fact that the latch re-arms once the host clears the array. Both are
- * regressions waiting to happen — the multi-entity headline used to collapse to
- * a bare count ("Drop 2 custom entities here"), which differs from the base
- * string only in the middle and so read as "nothing changed" mid-drag.
+ * Covers three things no other story can:
+ *
+ * 1. The `isPointerOver` tier of the overlay, and specifically its wording. The
+ *    multi-entity headline used to collapse to a bare count ("Drop 2 custom
+ *    entities here"), which differs from the base string only in the middle and
+ *    so read as "nothing changed" mid-drag (DECISIONS.md §14).
+ * 2. That the chat disarms itself, with the host doing nothing at all. The
+ *    second drag arming at all is the proof.
+ * 3. That listeners are live the instant `startCustomEntityDrag` returns. The
+ *    gesture below dispatches exactly ONE `pointermove` and expects it to be
+ *    seen. Under the old prop-driven arming this needed a `waitFor` and two
+ *    moves, because the latch armed a commit later and the first move fell into
+ *    the gap (DECISIONS.md §14 and §15).
  */
 export const DragGesture: Story = {
   args: {
@@ -454,21 +419,19 @@ export const DragGesture: Story = {
       const from = centreOf(source);
       pointer(source, 'pointerdown', from.x, from.y, 1);
 
-      // The overlay is prop-driven and appears at once; the latch arms one
-      // commit later, so wait for it before moving (DECISIONS.md §14).
-      await waitFor(() => expect(canvas.getByText('Drop custom entity here')).toBeInTheDocument());
-
+      // ONE move, dispatched with no wait in between. Listeners are attached
+      // synchronously inside `startCustomEntityDrag`, so there is no commit for
+      // this move to fall into — that is the assertion.
       const to = centreOf(chat);
       pointer(document, 'pointermove', to.x, to.y, 1);
-      pointer(document, 'pointermove', to.x + 1, to.y + 1, 1);
 
       await waitFor(() => expect(canvas.getByText(expected)).toBeInTheDocument());
       expect(chat).toHaveClass('mc-chat-drag-over');
 
       pointer(document, 'pointerup', to.x, to.y, 0);
 
-      // The host clears on the consumed callback, which dismisses the overlay
-      // and returns the latch to `idle`.
+      // Nobody cleared anything: the chat disarmed itself on the release, which
+      // is what dismisses the overlay.
       await waitFor(() => expect(canvas.queryByText('Drop custom entity here')).toBeNull());
     };
 
@@ -478,8 +441,8 @@ export const DragGesture: Story = {
     });
 
     await step('two entities: the headline still names them', async () => {
-      // Re-arming only works because the host emptied the array after the first
-      // gesture — a spent latch stays spent until it sees an empty array.
+      // Re-arming with no host involvement whatsoever. Under the old contract
+      // this second drag was dead unless the host had emptied the array first.
       await drag(/drag two/, /^Release to attach Car 123 and Area A$/);
       await expect(args.onDragCustomEntitiesConsumed).toHaveBeenCalledTimes(2);
     });

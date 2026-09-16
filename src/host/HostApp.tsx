@@ -6,6 +6,7 @@ import type {
   CustomEntityDragCancelReason,
   CustomEntityDropDebug,
   CustomEntityComponentRegistry,
+  MagicChatHandle,
 } from "../magic-chat";
 import { MapPanel } from "./MapPanel";
 import type { MapApi } from "./MapPanel";
@@ -56,18 +57,30 @@ const seedMessages: ChatMessage[] = [
  *
  * Its whole side of the contract is:
  *   1. notice that the user pressed on one of its objects,
- *   2. put that object's JSON into `dragCustomEntities`,
- *   3. clear it again when MagicChat says the drag resolved.
+ *   2. call `chatRef.current.startCustomEntityDrag([entity])` — while the
+ *      button is still down,
+ *   3. show and hide its own drag ghost.
+ *
+ * Note what is NOT in that list any more: there is no drag payload state to
+ * clear, and no way to get the chat into a stuck state by forgetting to. The
+ * only drag state left here is the ghost, which is host chrome MagicChat has
+ * never known about.
  *
  * It never tells MagicChat how to detect the drop, and MagicChat never learns
  * what a Car is.
  */
 export function HostApp() {
   const mapRef = useRef<MapApi>(null);
+  const chatRef = useRef<MagicChatHandle>(null);
 
-  const [dragCustomEntities, setDragCustomEntities] = useState<CustomEntity[]>(
-    [],
-  );
+  /*
+    Host-side drag chrome only: the ghost needs labels and a starting point.
+    This deliberately does NOT drive MagicChat — the chat armed itself the
+    moment `startCustomEntityDrag` returned, and disarms itself on release. If
+    this state ever went stale the worst case is a ghost left on screen, which
+    cannot break a future drag.
+  */
+  const [ghostEntities, setGhostEntities] = useState<CustomEntity[]>([]);
   const [dragOrigin, setDragOrigin] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -82,17 +95,23 @@ export function HostApp() {
 
   const startDrag = useCallback(
     (entities: CustomEntity[], point: { clientX: number; clientY: number }) => {
-      setDragCustomEntities(entities);
+      // The entire handshake. It returns false if no button is held — which
+      // cannot happen from a pointerdown handler, but is exactly what stops a
+      // click or an effect from arming a drag that was never really happening.
+      if (!chatRef.current?.startCustomEntityDrag(entities)) {
+        setLastOutcome("refused (no button held)");
+        return;
+      }
+      setGhostEntities(entities);
       setDragOrigin({ x: point.clientX, y: point.clientY });
       setLastOutcome("dragging…");
     },
     [],
   );
 
+  /** Retire the ghost. MagicChat has already disarmed itself by this point. */
   const endDrag = useCallback((outcome: string) => {
-    // Clearing the array is the host's job, and it must happen before the next
-    // drag: MagicChat allows one drop per non-empty period.
-    setDragCustomEntities([]);
+    setGhostEntities([]);
     setDragOrigin(null);
     setLastOutcome(outcome);
   }, []);
@@ -132,7 +151,7 @@ export function HostApp() {
     [zoomTo],
   );
 
-  const ghostLabels = dragCustomEntities.map((entity) =>
+  const ghostLabels = ghostEntities.map((entity) =>
     entityLabel(customEntityComponents, entity),
   );
 
@@ -172,8 +191,7 @@ export function HostApp() {
       <main className="host-body">
         <DebugBar
           host={{
-            entityCount: dragCustomEntities.length,
-            ghostVisible: dragOrigin !== null && dragCustomEntities.length > 0,
+            ghostVisible: dragOrigin !== null && ghostEntities.length > 0,
             mapDragLocked,
             lastPress,
             lastOutcome,
@@ -192,8 +210,8 @@ export function HostApp() {
 
         <aside className="host-chat">
           <MagicChat
+            ref={chatRef}
             customEntityComponents={customEntityComponents}
-            dragCustomEntities={dragCustomEntities}
             onDragCustomEntitiesConsumed={(entities) =>
               endDrag(
                 `consumed ${entities.length} entit${entities.length === 1 ? "y" : "ies"}`,
@@ -211,7 +229,7 @@ export function HostApp() {
         </aside>
       </main>
 
-      {dragOrigin && dragCustomEntities.length > 0 && (
+      {dragOrigin && ghostEntities.length > 0 && (
         <DragGhost labels={ghostLabels} origin={dragOrigin} />
       )}
     </div>

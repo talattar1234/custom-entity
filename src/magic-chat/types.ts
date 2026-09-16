@@ -96,15 +96,19 @@ export interface UnknownEntityProps {
  * ------------------------------------------------------------------ */
 
 /**
- * One arming of `dragCustomEntities` permits at most one drop.
+ * One call to `startCustomEntityDrag` permits at most one drop.
  *
- *   idle --(entities appear)--> armed --(release/cancel)--> spent
- *     ^                                                      |
- *     +---------------- (host clears the array) -------------+
+ *   idle --(startCustomEntityDrag, button held)--> armed
+ *     ^                                              |
+ *     +------------ (release / cancel) --------------+
+ *
+ * Self-clearing, and there is no third state. The old prop-driven design needed
+ * a `spent` state because its arming signal outlived the gesture; an arming that
+ * is a function call cannot, so the gesture returns to `idle` on its own.
  */
-export type CustomEntityDragLatchState = 'idle' | 'armed' | 'spent';
+export type CustomEntityDragLatchState = 'idle' | 'armed';
 
-/** The listeners the drop target attaches while a drag is armed. */
+/** The listeners the drop target attaches *for the duration of a gesture*. */
 export type CustomEntityDropListenerName =
   | 'pointermove'
   | 'pointerup'
@@ -128,11 +132,24 @@ export interface CustomEntityDropDebugEvent {
 /** A snapshot of the drop target's internals, for display. */
 export interface CustomEntityDropDebug {
   latch: CustomEntityDragLatchState;
-  /** True while listeners are attached — i.e. only while armed. */
+  /** Gesture listeners currently attached — i.e. only while armed. */
   listening: boolean;
   listeners: Record<CustomEntityDropListenerName, CustomEntityDropListenerStatus>;
-  /** Length of `dragCustomEntities`. */
+  /** Size of the armed payload. */
   entityCount: number;
+  /**
+   * The pointer the always-on tracker currently sees held, if any.
+   *
+   * This is the state `startCustomEntityDrag` consults, so it is also the
+   * answer to "why was my drag refused?" — `null` here means no button is down.
+   */
+  pointerDown: { pointerId: number; pointerType: string } | null;
+  /**
+   * How many `startCustomEntityDrag` calls have been refused, cumulatively —
+   * almost always because no button was held. A non-zero counter means a host
+   * is announcing drags outside a real press.
+   */
+  refusedStarts: number;
   /** The pointer this gesture is locked to; other pointers are ignored. */
   pointerId: number | null;
   pointerType: string | null;
@@ -151,27 +168,20 @@ export interface MagicChatProps {
   customEntityComponents: CustomEntityComponentRegistry;
 
   /**
-   * Entities the host is currently dragging. Non-empty means "a drag is in
-   * flight": MagicChat paints its drop overlay and watches for the pointer
-   * release.
+   * The entities were dropped on MagicChat and are now in the composer.
    *
-   * CONTRACT: the host must clear this back to empty before starting the next
-   * drag. MagicChat allows at most one drop per non-empty period, and the
-   * overlay stays up for as long as the array is non-empty — so a host that
-   * forgets to clear leaves it stranded on screen. That is deliberate; see
-   * DECISIONS.md §5 and §14.
+   * Purely informational — the host has nothing it must do in response. It is
+   * the right place to tear down host-side drag chrome such as a drag ghost.
    */
-  dragCustomEntities?: CustomEntity[];
-
-  /** The entities were dropped on MagicChat. The host should clear the array. */
   onDragCustomEntitiesConsumed?: (entities: CustomEntity[]) => void;
 
   /**
-   * The drag ended without a drop. The host should clear the array.
+   * The drag ended without a drop.
    *
-   * Worth handling even if you already clear on your own `pointerup`: on
+   * Worth handling even if you already tear down on your own `pointerup`: on
    * `pointercancel` (common on touch) or when the pointer is released outside
-   * the window, your `pointerup` may never fire.
+   * the window, your `pointerup` may never fire — and your drag ghost would be
+   * left on screen.
    */
   onCustomEntityDragCancelled?: (reason: CustomEntityDragCancelReason) => void;
 
@@ -187,8 +197,32 @@ export interface MagicChatProps {
   onDebugChange?: (debug: CustomEntityDropDebug) => void;
 }
 
-/** Imperative API, for attaching entities without a drag (e.g. a button). */
+/**
+ * Imperative API. This is how a drag is announced.
+ *
+ * `startCustomEntityDrag` is the host's whole side of the drag contract, and it
+ * lives here rather than in a prop because "a button is down on one of my
+ * objects right now" is an event, not a value. See DECISIONS.md §15.
+ */
 export interface MagicChatHandle {
+  /**
+   * Announce a drag of `entities` and arm the drop target.
+   *
+   * MUST be called while a button is physically held — from a `pointerdown`
+   * handler, or later inside the same held gesture (a long-press or a
+   * drag-threshold delay is fine). With no button down the call is refused,
+   * returns `false` and changes nothing.
+   *
+   * Calling it again while armed replaces the payload without re-arming, so a
+   * selection can grow mid-drag. Returns whether the target is armed.
+   */
+  startCustomEntityDrag: (entities: CustomEntity[]) => boolean;
+  /**
+   * Abandon an armed drag. Silent — neither resolve callback fires, because the
+   * host asked for it and therefore already knows.
+   */
+  cancelCustomEntityDrag: () => void;
+  /** Attach entities without a drag at all — e.g. a "Send to chat" button. */
   attachEntities: (entities: CustomEntity[]) => void;
   clearComposer: () => void;
   focus: () => void;

@@ -16,7 +16,7 @@ simplifications have specific, known failure modes.
 | [`README.md`](./README.md) | Orienting: what the component does, the entity model, the drag/drop mechanism end to end, the edge-case table. Start here. |
 | [`USAGE.md`](./USAGE.md) | Wiring MagicChat into a host — a complete minimal example plus the three things that will bite you. |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Before editing the code: module map (§2, says which file to touch for which change), drag lifecycle (§3), public API (§4), state ownership (§5), extension recipes (§6), pitfalls (§7), verification checklist (§9). |
-| [`DECISIONS.md`](./DECISIONS.md) | Before changing the *mechanism*: 13 numbered decisions with what was rejected and why. Check here before "simplifying" anything in `useCustomEntityDropTarget.ts`. |
+| [`DECISIONS.md`](./DECISIONS.md) | Before changing the *mechanism*: 15 numbered decisions with what was rejected and why. Check here before "simplifying" anything in `useCustomEntityDropTarget.ts` — §15 covers the drag API itself. |
 
 Keep those files current when behaviour changes — they are the spec, not notes.
 
@@ -44,10 +44,17 @@ These are the failures that are silent and confusing. Full list in `ARCHITECTURE
 - **The registry (`customEntityComponents`) must be referentially stable** — `useMemo`
   over `useCallback`-stable callbacks. An inline arrow is a new component type
   every render, so React remounts every renderer.
-- **The host must clear `dragCustomEntities` after each gesture.** Exactly one of
-  `onDragCustomEntitiesConsumed` / `onCustomEntityDragCancelled` fires; if the
-  array isn't cleared the one-shot latch stays spent and the next drag does
-  nothing. Intentional — see `DECISIONS.md` §5.
+- **A drag is announced by a call, not a prop.**
+  `chatRef.current.startCustomEntityDrag(entities)`, and only while a button is
+  physically held — the call refuses otherwise and returns `false`. There is no
+  `dragCustomEntities` prop and nothing for the host to clear: the gesture
+  disarms itself on release. See `DECISIONS.md` §15, which also lists the five
+  failure modes this replaced. Both resolve callbacks are informational; a host
+  that ignores them still drags correctly.
+- **An empty payload is refused before the already-armed branch** in
+  `startCustomEntityDrag`. The other order lets `start([])` empty a live
+  gesture while the latch stays armed, which breaks
+  "`isDragActive` ⟺ armed" (`ARCHITECTURE.md` §3, invariant 7).
 - **MagicChat treats `entity.properties` as opaque.** It reads `entity.type` to
   look up renderers and nothing else. Don't add schema knowledge to
   `src/magic-chat/`, and don't import from `src/host/` there.

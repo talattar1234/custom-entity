@@ -43,23 +43,27 @@ almost every odd-looking thing in this codebase.
 
 There is no "drag event". Instead:
 
-> **You put things in a prop to say "a drag is happening".
+> **You call one function to say "a drag is starting right now".
 > MagicChat watches the mouse and tells you when it's over.**
 
-The prop is called `dragCustomEntities`. It's an array.
+The function lives on a ref, and it takes an array:
 
+```tsx
+const chatRef = useRef<MagicChatHandle>(null);
+
+chatRef.current.startCustomEntityDrag([car]);   // "I'm dragging a car"
 ```
-  dragCustomEntities = []          →  nothing happening
-  dragCustomEntities = [car]       →  "I am dragging a car right now"
-```
 
-That's the entire handshake. You set the array; you empty it when told.
+That's the entire handshake. You call it once, at the start. You don't tell
+MagicChat when the drag ends — it can see that for itself, and it cleans up
+after itself.
 
-**"Right now" is literal.** A non-empty array does not mean "a car is pending" or
-"a car is selected" — it means *a mouse button or finger is physically down on a
-car at this moment*. So you set the array from a `pointerdown` handler, never
-from a click, an effect, or a Storybook arg. See §8.5 — this one catches
-everybody.
+**"Right now" is literal, and MagicChat checks.** The call only works if a mouse
+button or finger is *physically down at that moment*. Call it from a click
+handler or a `useEffect` and it does nothing at all, returning `false` to tell
+you so. That is deliberate: a drag that isn't a real press isn't a drag.
+
+So: call it from `onPointerDown`. (Or a bit later in the same press — see §8.4.)
 
 ---
 
@@ -67,24 +71,27 @@ everybody.
 
 ```
   1. User presses on your car                  ← you notice this
-     you: setDragging([car])                      (button still held — §8.5)
+     you: chatRef.current.startCustomEntityDrag([car])
 
-  2. MagicChat sees a non-empty array
-     → shows "Drop custom entity here"
-     → starts watching the mouse
+  2. MagicChat checks a button really is down
+     → no?  returns false, nothing happens
+     → yes: shows "Drop custom entity here"
+            and starts watching the mouse, immediately
 
   3. Mouse moves over the chat, button still held
      → overlay changes to "Release to attach Car 123"
 
   4. User lets go
+     → MagicChat stops watching and forgets the car, all by itself
      ├── over the chat  → onDragCustomEntitiesConsumed()   ✅ attached
      └── somewhere else → onCustomEntityDragCancelled()    ❌ nothing attached
 
-  5. you: setDragging([])          ← ALWAYS. see §8.
+  5. ...nothing. You're done. It's ready for the next drag already.
 ```
 
-Exactly **one** of those two callbacks fires, every time. So you can do the same
-thing in both: empty the array.
+Exactly **one** of those two callbacks fires, every time — but you don't have to
+handle either one. They're there so you can tidy up your *own* stuff, like a
+little preview that follows the cursor. MagicChat has already tidied up its own.
 
 ---
 
@@ -141,9 +148,13 @@ Both get the **whole entity**, so your buttons can do real things — the demo's
 Copy-paste this and it runs. One entity type, one drag source, no map.
 
 ```tsx
-import { useState } from 'react';
+import { useRef } from 'react';
 import { MagicChat } from './magic-chat';
-import type { CustomEntity, CustomEntityComponentRegistry } from './magic-chat';
+import type {
+  CustomEntity,
+  CustomEntityComponentRegistry,
+  MagicChatHandle,
+} from './magic-chat';
 import './magic-chat/magic-chat.css';
 
 // 1. How to draw a Car. Written OUTSIDE the component on purpose — see §8.
@@ -163,8 +174,7 @@ const renderers: CustomEntityComponentRegistry = {
 const car: CustomEntity = { type: 'Car', properties: { name: 'Car 123' } };
 
 export function App() {
-  const [dragging, setDragging] = useState<CustomEntity[]>([]);
-  const stopDragging = () => setDragging([]);
+  const chatRef = useRef<MagicChatHandle>(null);
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
@@ -173,7 +183,8 @@ export function App() {
         style={{ flex: 1, padding: 40, touchAction: 'none', cursor: 'grab' }}
         onPointerDown={(event) => {
           event.preventDefault();
-          setDragging([car]);        // ← this is the entire "start a drag"
+          // ← this is the entire "start a drag"
+          chatRef.current?.startCustomEntityDrag([car]);
         }}
       >
         🚗 press here, drag right, let go over the chat →
@@ -181,44 +192,27 @@ export function App() {
 
       {/* 4. The chat. */}
       <div style={{ width: 360 }}>
-        <MagicChat
-          customEntityComponents={renderers}
-          dragCustomEntities={dragging}
-          onDragCustomEntitiesConsumed={stopDragging}   // dropped on the chat
-          onCustomEntityDragCancelled={stopDragging}    // dropped anywhere else
-        />
+        <MagicChat ref={chatRef} customEntityComponents={renderers} />
       </div>
     </div>
   );
 }
 ```
 
-Notice there is no `onDragStart`, no `draggable`, no `onDrop`. Just a piece of
-state and two callbacks that both empty it.
+Notice there is no `onDragStart`, no `draggable`, no `onDrop` — and no state at
+all. One ref, one call.
 
 *(This example was compiled under `strict` and run in the browser — press, drag,
 release, twice in a row.)*
 
 ---
 
-## 8. The five things that will actually bite you
+## 8. The four things that will actually bite you
 
-### 1. Always empty the array
+*(There used to be five. Two of them were about remembering to empty an array
+you no longer have — see §11 if you're coming from the old version.)*
 
-Handle **both** callbacks, not just the "consumed" one.
-
-MagicChat allows **one drop per non-empty array**. If you only clear on a
-successful drop, then a drag released outside the chat leaves your array full
-forever — and after that, nothing works and the drop overlay is stuck on screen.
-
-> **Symptom:** the blue "Drop custom entity here" panel won't go away, and
-> dragging does nothing.
-> **Cause:** this. Every time.
-
-This is deliberate: a stuck overlay is easy to spot. The alternative design
-silently re-attached the same car twice, which is much harder to notice.
-
-### 2. Don't build the renderers inside your component
+### 1. Don't build the renderers inside your component
 
 ```tsx
 // ✗ BAD — new objects every render, React throws your components away and
@@ -235,7 +229,7 @@ const renderers = useMemo(() => ({ Car: { … } }), [zoomTo]);
 Outside the component is simplest, and works because the object is then created
 exactly once.
 
-### 3. If you draw something that follows the cursor, make it click-through
+### 2. If you draw something that follows the cursor, make it click-through
 
 ```css
 .my-drag-ghost { pointer-events: none; }
@@ -245,37 +239,36 @@ MagicChat figures out "is the mouse over the chat?" by asking the browser *what
 is under this point*. If your little drag preview is painted under the cursor, the
 answer is always "your preview" and never "the chat", so the drop never happens.
 
-### 4. Put `touch-action: none` on the drag source
+### 3. Put `touch-action: none` on the drag source
 
 Otherwise a finger-drag is treated as *scrolling* the page, and the browser
 cancels your drag halfway through. Mouse works fine; touch mysteriously doesn't.
 
-### 5. Set the array while the button is still down
+### 4. Call it while the button is still down
 
 ```tsx
-// ✗ BAD — no button is held at any point. Dead on the first mouse move.
-<button onClick={() => setDragging([car])}>Drag the car</button>
-useEffect(() => setDragging([car]), []);
-const meta = { args: { dragCustomEntities: [car] } };   // ← Storybook too
+// ✗ REFUSED — no button is held at any point, so nothing happens
+<button onClick={() => chatRef.current?.startCustomEntityDrag([car])}>Drag</button>
+useEffect(() => { chatRef.current?.startCustomEntityDrag([car]); }, []);
 
-// ✓ GOOD — the button is physically down when the array is set
-<div onPointerDown={() => setDragging([car])}>🚗</div>
+// ✓ GOOD — the button is physically down when you call
+<div onPointerDown={() => chatRef.current?.startCustomEntityDrag([car])}>🚗</div>
 ```
 
-A non-empty array means *"a button is down right now"* (§3). MagicChat enforces
-that: a mouse that moves with **no button held** is, by definition, not a drag, so
-the gesture is cancelled on the spot and the drop target goes inert.
+A drag means *"a button is down right now"* (§3), and MagicChat checks rather than
+trusting you. If no button is down the call returns `false` and changes nothing
+— no overlay, no listeners, no half-started drag.
 
-> **Symptom:** the overlay appears and says "Drop custom entity here", but it
-> never changes to "Release to attach Car 123" no matter where you move the
-> mouse. Nothing is clickable, nothing responds.
-> **Cause:** the array was set outside a press — a click handler, an effect, or
-> static Storybook args.
+> **Symptom:** you call it and absolutely nothing happens.
+> **Cause:** you called it outside a press. Log the return value to confirm.
 
-Once that happens the drop target stays inert until you empty the array and start
-a real press. You can't "wake it up" by moving the mouse back.
+This is the gentlest item on this list, and it's here mostly for the old hands:
+in the previous version this was a *prop*, it could be set from anywhere, and
+setting it outside a press armed a drop target that then died silently on the
+first mouse move. The symptom was an overlay that appeared but never lit up. Now
+the call just says no.
 
-You don't have to set it on `pointerdown` *exactly* — anywhere inside the held
+You don't have to call it on `pointerdown` *exactly* — anywhere inside the held
 gesture is fine, so waiting a few pixels to tell a click from a drag works. The
 button just has to still be down.
 
@@ -287,14 +280,15 @@ Small thing, worth knowing, because it tells you what MagicChat is thinking:
 
 | What you see | What it means |
 | --- | --- |
-| "Drop custom entity here" | your array isn't empty — a drag is happening somewhere |
+| "Drop custom entity here" | a drag is happening somewhere — you called `startCustomEntityDrag` and it said yes |
 | "Release to attach **Car 123**" + a solid blue border | the button is still down, the mouse is over the chat *right now*, and letting go will work |
 
-The first one just follows your prop. The second one only appears when a drop
-would genuinely land, so it never promises something it can't do.
+The first one is on for exactly as long as the drag is; it cannot get stuck,
+because the same thing that shows it is the thing that clears it. The second only
+appears when a drop would genuinely land, so it never promises something it can't
+do.
 
-If you only ever see the first one, you're hitting §8.5 — the array was set
-without a button held, so the second state is unreachable.
+If you see neither, the call was refused — §8.4.
 
 ---
 
@@ -308,12 +302,61 @@ The single rule that keeps this tidy:
   what the user grabbed               did they let go over me?
   what a Car is                       the chat UI
   what a Car looks like               the messages
-  the drag array                      what's attached to the composer
+  your own cursor preview             the drag itself, start to finish
+                                      what's attached to the composer
 ```
+
+The drag used to be on your side of that table. It moved, and that's the whole
+change described in §11.
 
 MagicChat never imports anything from your app, and never reads
 `entity.properties`. If you ever find yourself wanting to teach MagicChat about
 cars, something has gone wrong — pass it a component instead.
+
+---
+
+## 11. Coming from the old version?
+
+The drag used to be announced with a **prop** instead of a call:
+
+```tsx
+// OLD
+const [dragging, setDragging] = useState<CustomEntity[]>([]);
+const stop = () => setDragging([]);
+
+<div onPointerDown={() => setDragging([car])}>🚗</div>
+<MagicChat
+  dragCustomEntities={dragging}
+  onDragCustomEntitiesConsumed={stop}
+  onCustomEntityDragCancelled={stop}
+  customEntityComponents={renderers}
+/>
+
+// NEW
+const chatRef = useRef<MagicChatHandle>(null);
+
+<div onPointerDown={() => chatRef.current?.startCustomEntityDrag([car])}>🚗</div>
+<MagicChat ref={chatRef} customEntityComponents={renderers} />
+```
+
+**Why it changed.** A non-empty array meant "a button is down *right now*" — but
+an array is a thing that *stays* set, and a press isn't. Everything awkward about
+the old version came from that gap:
+
+- you had to empty the array afterwards, and if you forgot, every later drag
+  silently stopped working and the overlay stuck to the chat for ever;
+- you had to remember to set it only during a real press, because nothing stopped
+  you setting it from a click or an effect — which armed a drag that then died on
+  the first mouse move.
+
+A function call can't be left switched on, and this one refuses to run unless a
+button really is down. So both problems just stop existing, along with the two
+warnings in §8 that used to describe them.
+
+**What to do.** Swap the state for a ref, move your `setDragging([car])` to
+`chatRef.current?.startCustomEntityDrag([car])`, and delete the clearing
+callbacks. Keep them only if you have your own cursor preview to hide — that's
+all they're for now.
 
 ---
 

@@ -71,8 +71,15 @@ overlay. The gesture also began somewhere else entirely.
 **Why capture phase.** Nothing in the page can `stopPropagation` them away
 before we see them.
 
-**Why gated.** There are zero listeners at rest, which matters if this becomes a
-package that ships in an app with many chats.
+**Why gated.** The *gesture* listeners cost nothing at rest, which matters if
+this becomes a package that ships in an app with many chats.
+
+**Amendment (see §15).** "Zero listeners at rest" no longer holds. Four cheap
+ones — `pointerdown` / `pointerup` / `pointercancel` on `document`, `blur` on
+`window` — are now always attached, tracking whether a button is held. They are
+what lets `startCustomEntityDrag` refuse a call made outside a real press, which
+is the guard the whole imperative design rests on. The five listeners in this
+section are still gated; only the tracker is permanent.
 
 **Detail.** `pointerup` re-runs the hit test on its own coordinates rather than
 trusting the last `pointermove`, so the drop decision can never be a frame
@@ -98,20 +105,26 @@ against a local `over` mirror removes that without any throttling machinery.
 
 ## 5. The one-shot latch, instead of session ids
 
-**Decision.** A three-state latch inside the hook:
+**Decision.** A latch inside the hook, which §15 has since reduced to two states:
 
 ```
-idle ──(entities appear)──► armed ──(release/cancel)──► spent
-  ▲                                                       │
-  └──────────── (host clears the array) ──────────────────┘
+idle ──(startCustomEntityDrag, button held)──► armed
+  ▲                                              │
+  └──────────── (release / cancel) ──────────────┘
 ```
 
-One arming permits at most one drop. After a release MagicChat is inert
-regardless of what the prop still holds.
+One arming permits at most one drop, and the gesture returns itself to `idle`.
+
+**Historical note.** As originally built there was a third state, `spent`, and
+the host had to clear `dragCustomEntities` to get back to `idle`. That existed
+solely because the arming signal was a prop that outlived the gesture. §15
+replaced the prop with a call, and `spent` went with it — the reasoning below is
+still why there is a latch at all, and it is still worth reading before
+proposing a session id.
 
 **Problem being solved.** Double-consumption. React state updates are async, so
 between MagicChat calling back and the host re-rendering with an empty array,
-MagicChat still sees the old prop. A stale array plus a stray click on the chat
+MagicChat still saw the old prop. A stale array plus a stray click on the chat
 would re-attach the same entities.
 
 **Rejected: a session object `{ id, entities, pointerId }` plus
@@ -127,10 +140,17 @@ the bookkeeping is harder to explain than the latch.
 **Why the latch won.** It makes double-consumption *structurally* impossible
 rather than defended against, needs nothing from the host, and is one enum.
 
-**Accepted trade-off.** The host must clear the array before the next drag, or
-the second drag silently does nothing. This is a deliberate choice of a loud,
-easily-diagnosed failure ("my second drag stopped working") over a silent wrong
-one (stale re-attachment). It is stated as a contract in the README.
+**The trade-off, and how it was retired.** The original bargain was: the host
+must clear the array before the next drag, or the second drag silently does
+nothing — a loud, easily-diagnosed failure ("my second drag stopped working")
+preferred over a silent wrong one (stale re-attachment).
+
+§15 removed the need to choose. With the arming signal as a call, there is no
+stale prop for a stray click to re-consume, so idempotency no longer depends on
+remembering anything: `armed → idle` happens inside `finish()`, before the
+host's callback even runs. The host has nothing to clear and no contract to
+forget. Double-consumption within one gesture is still blocked structurally, by
+the `gesture.finished` flag.
 
 ---
 
@@ -140,12 +160,19 @@ one (stale re-attachment). It is stated as a contract in the README.
 `onDragCustomEntitiesConsumed` and `onCustomEntityDragCancelled(reason)`.
 
 **Why.** With only a "consumed" event, a drag released outside the chat is never
-reported, so the host never learns it should clear — and then, per §5, no future
-drag can arm. The host cannot reliably substitute its own `pointerup` handler,
-because `pointerup` may never arrive: `pointercancel` (common on touch when the
-browser decides the gesture was a scroll), a release outside the browser window,
-or an alt-tab. MagicChat is already listening for all of those, so it is the
-right place to report them.
+reported, so the host never learns the gesture is over — and then its drag ghost
+is stranded on screen. (Before §15 the consequence was worse: the host also
+never learned it should clear the array, and per §5 no future drag could arm.)
+The host cannot reliably substitute its own `pointerup` handler, because
+`pointerup` may never arrive: `pointercancel` (common on touch when the browser
+decides the gesture was a scroll), a release outside the browser window, or an
+alt-tab. MagicChat is already listening for all of those, so it is the right
+place to report them.
+
+**Since §15 these are informational.** Neither callback is load-bearing for the
+mechanism any more — the drop target disarms itself either way, so a host that
+ignores both still works, and only its own chrome suffers. Exactly one still
+fires per armed gesture, and that guarantee is still worth having.
 
 **Cancel sources:** `pointercancel`, `window` blur, `Escape`, and — for mouse
 only — a `pointermove` with `buttons === 0`, which means the gesture ended
@@ -153,7 +180,7 @@ without us seeing the release.
 
 ---
 
-## 7. Prop-driven, not a module-level drag manager
+## 7. Not a module-level drag manager
 
 **Decision.** The host passes `dragCustomEntities` as a prop.
 
@@ -170,6 +197,16 @@ The prop flow is also more idiomatic and was what the API sketch asked for.
 `useCustomEntityDropTarget` hook and the imperative `attachEntities` handle
 cover the common cases. If you reach several independent drop targets, revisit
 this decision — see `ARCHITECTURE.md` §6.
+
+**Amendment (see §15).** The prop is gone; the host now calls
+`chatRef.current.startCustomEntityDrag(entities)`. That is *not* the singleton
+rejected above and none of the objections transfer: the handle belongs to one
+mounted component, so there is no shared mutable module state, nothing to test
+around, and no failure if two copies of the package end up bundled — each copy's
+instances simply address their own. It also improves on the prop for the
+multi-target case, which §7 named as the point at which to revisit: a call has an
+addressee, so the host arms the target it means instead of publishing one array
+that every target reads.
 
 ---
 
@@ -300,11 +337,19 @@ holds the latch. Neither was visible before.
 
 ---
 
-## 14. Overlay visibility follows the prop, not the latch
+## 14. Overlay visibility follows the drag, not internal bookkeeping
+
+> **Status after §15.** The tension this section was written to resolve no longer
+> exists. The prop and the latch were two sources of truth that had to agree;
+> the mechanism now owns the payload, so `isDragActive`
+> (`dragCustomEntities.length > 0`, where that array is hook state) and "the
+> latch is armed" are *the same fact* and cannot diverge. Everything below about
+> the two overlay tiers and their wording still holds and is still load-bearing.
+> The parts about stranding and about the one-commit gap are marked where they
+> have been overtaken.
 
 **Decision.** `isDragActive` is `dragCustomEntities.length > 0`. The overlay is
-painted for exactly as long as the host says a drag is in flight. The latch no
-longer drives any pixels.
+painted for exactly as long as a drag is in flight.
 
 **Why.** The latch is an *event* concern — it exists to make consumption
 idempotent (§5). Rendering from it made the view a function of internal
@@ -316,20 +361,26 @@ of truth. Now they agree.
 Prop-driven visibility also removes a frame of lag — the latch arms in an effect,
 so the overlay used to appear one commit after the prop changed.
 
-**Consequence of removing that lag.** The overlay is now painted *during* the
-one-commit window before the latch arms and the document listeners attach. The
-window is not new — the latch has always armed a commit after the prop — but it
-used to be invisible, because nothing was on screen during it either. A pointer
-move landing inside that window is not seen: verified with synthetic events,
-where two moves dispatched back-to-back after `pointerdown` produced a
-`pointermove` fired count of 1 in the debug bar.
+**Consequence of removing that lag — since closed.** The overlay was then
+painted *during* the one-commit window before the latch armed and the document
+listeners attached. The window was not new — the latch had always armed a commit
+after the prop — but it used to be invisible, because nothing was on screen
+during it either. A pointer move landing inside that window was not seen:
+verified with synthetic events, where two moves dispatched back-to-back after
+`pointerdown` produced a `pointermove` fired count of 1 in the debug bar.
 
-Harmless in practice, and deliberately so. A human's first real move arrives a
-frame or more after the press, by which time the latch is armed; a missed move is
-corrected by the next one; and `pointerup` re-hit-tests its own coordinates
-rather than trusting the last move (§3), so the drop decision is never the
-casualty. Do not "fix" this by arming synchronously during render — that is a
-side effect in a render body, and the gap it closes is invisible.
+It was judged harmless, and it was: a human's first real move arrives a frame or
+more after the press; a missed move is corrected by the next one; and
+`pointerup` re-hit-tests its own coordinates rather than trusting the last move
+(§3), so the drop decision was never the casualty. The advice at the time was
+*not* to fix it by arming synchronously during render — a side effect in a render
+body, to close a gap nobody could see.
+
+§15 closed it anyway, and without that hazard: arming is now a function call, so
+the listeners attach inside the call itself rather than in an effect a commit
+later. There is no render involved to be late. `DragGesture` pins this by
+dispatching a single `pointermove` immediately after `pointerdown`, with no
+`waitFor` in between, and expecting it to be seen.
 
 **What keeps the overlay honest.** Two tiers, and only the weak one moved:
 
@@ -364,27 +415,147 @@ and asserts the exact headline for one- and two-entity payloads, so a regression
 fails `npm test` rather than waiting to be noticed by eye.
 
 **Rejected: a distinct "disarmed" overlay variant** — dimmed, no `＋`, text like
-"drag already released" — shown when the prop is non-empty but the latch is
-`spent`. Strictly more honest, but it promotes a host contract violation to a
-first-class UI state with its own styling, and spends design vocabulary on a
-situation that should not exist.
+"drag already released" — shown when the prop was non-empty but the latch was
+`spent`. Strictly more honest, but it promoted a host contract violation to a
+first-class UI state with its own styling, and spent design vocabulary on a
+situation that should not exist. Moot under §15: that combination of states is no
+longer representable.
 
-**Accepted trade-off.** A host that never clears now leaves the overlay stranded
-over an inert drop target. The drop was already dead in that case — before this
-it just failed invisibly — so this is the same §5 bargain, taken one step
-further: the failure is now impossible to miss rather than merely diagnosable.
+**Accepted trade-off — since retired.** A host that never cleared was left with
+the overlay stranded over an inert drop target. The drop was already dead in that
+case, so this was the same §5 bargain taken one step further: the failure made
+impossible to miss rather than merely diagnosable.
 
-Note the full shape of it, though. Forgetting `onCustomEntityDragCancelled` is a
-*common* mistake (`USAGE.md` lists it as one of three that will bite you), and
-the degraded state changes from "drag works once, then stops" to "a blue overlay
-permanently covering the chat". That is better for the developer, who sees it
-immediately, and worse for end users if it ever ships, because a dead feature is
-less damaging than a panel that cannot be dismissed. Accepted for a POC; a host
-with a real release process should treat a stuck overlay as the loud signal it
-is meant to be.
+It had an ugly shape, and that is worth keeping on the record because it is what
+motivated §15. Forgetting `onCustomEntityDragCancelled` was a *common* mistake —
+`USAGE.md` listed it as one of three that will bite you — and the degraded state
+was "a blue overlay permanently covering the chat": better for the developer, who
+sees it at once, and worse for end users if it ever shipped, since a dead feature
+is less damaging than a panel that cannot be dismissed. Accepting that was
+defensible for a POC and uncomfortable for anything else.
 
-**Consequence for the stories.** `MagicChat.stories.tsx` sets
-`dragCustomEntities` as static story data and never clears it, so
-`DragCustomEntities` now shows the stranded overlay permanently. That is the
-contract on display rather than a broken story — and the story previously needed
-a footnote explaining why the overlay vanished on the first mouse move.
+Under §15 neither half can happen. The overlay is painted from state the
+mechanism owns and clears itself, so it cannot outlive the gesture, and there is
+no clearing obligation left to forget.
+
+**Consequence for the stories.** The old `DragCustomEntities` story set
+`dragCustomEntities` as static story data and never cleared it, so it displayed
+the stranded overlay permanently — the contract on display rather than a broken
+story, but confusing either way, and it could never reach the second tier because
+no button was ever held. §15 makes that story impossible to write: a drag
+announced without a press is refused. It is replaced by
+`StartCustomEntityDrag`, which you drive by hand, and `DragGesture`, which
+drives itself.
+
+---
+
+## 15. The arming signal is a call, not a prop
+
+**Decision.** The host announces a drag by calling
+`chatRef.current.startCustomEntityDrag(entities)` — from the imperative handle,
+inside the held gesture. The `dragCustomEntities` prop is gone, as is the
+requirement to clear it.
+
+```tsx
+onPointerDown={(event) => {
+  event.preventDefault();
+  chatRef.current?.startCustomEntityDrag([carEntity]);   // the entire handshake
+}}
+```
+
+**Why.** `dragCustomEntities` encoded an *event* as *state*. "A button is
+physically down on one of the host's objects right now" is a fact with a lifetime
+of one press; a prop is a value that persists until somebody changes it. Every
+sharp edge this file documented came from that mismatch, and they all resolve at
+once:
+
+| Documented problem | Was caused by |
+| --- | --- |
+| §5 — host must clear the array or the next drag silently dies | state outliving the event |
+| §14 — overlay stranded over an inert target | the same |
+| `ARCHITECTURE-for-dummies.md` — a whole numbered warning about "set the array *while the button is down*" | a prop can be set from a click or an effect; a guarded call cannot |
+| §14 — the verified one-commit window where the first `pointermove` is missed | arming had to travel through a render |
+| `ARCHITECTURE.md` §6 — two drop targets both watch one array and both fire | one value, no addressee |
+
+The latch also drops from three states to two (§5), because there is no longer a
+stale prop for a stray click to re-consume.
+
+**The guard is the point.** `startCustomEntityDrag` refuses unless a button is
+actually held, returning `false` and changing nothing. That is what makes
+"armed" mean what it says, and it is why the old failure mode cannot be
+reproduced: a drag cannot be announced from a click, an effect, or a Storybook
+arg. Refusals are counted in `CustomEntityDropDebug.refusedStarts` and the
+tracker's own view is in `pointerDown`, so "why was my drag refused?" is
+answerable from the debug bar.
+
+**Rejected: taking the triggering event, `startCustomEntityDrag(entities, event)`.**
+The natural-looking option, and wrong. A `PointerEvent` is a frozen snapshot, so
+a host arming from a long-press timer or a drag-threshold check hands over a
+stale `buttons: 1` and the guard approves a gesture that has already ended —
+precisely the failure the guard exists to catch. The DOM offers no way to *ask*
+whether a button is down, so the hook watches instead (see the tracker, and the
+§3 amendment).
+
+That tracker pays for itself twice. The guard becomes exact, and the pointer id
+is known at *arm* time rather than inferred from the first `pointermove` we
+happen to see — so multi-touch is filtered correctly from the very first event
+instead of the second.
+
+**Rejected: a `dragging` boolean prop plus a payload ref.** Half the plumbing,
+all of the original problem: a boolean prop persists exactly like an array does,
+so the clearing obligation survives intact.
+
+**Rejected: one setter, `setCustomEntitiesDrag(entities)`, with `[]` as the
+abort.** Two objections, one of them concrete. `start` while already armed means
+*replace the payload*, so `[]` would collide two intents — a host passing a
+computed selection that happens to be empty would silently abort a live drag
+instead of being refused — and the boolean return would invert with the argument,
+since "armed now" is permanently `false` for the empty case. The naming is the
+softer objection but still real: `set*` is the state vocabulary this decision
+exists to remove, and it invites "I'll just clear it in a cleanup", which is the
+old footgun in a new costume. A verb that *announces* keeps the guard honest.
+
+An empty payload is therefore refused unconditionally, checked *before* the
+already-armed branch. That ordering is load-bearing: the other way round,
+`start([])` on a live gesture would empty the payload while the latch stayed
+armed and listening, so `isDragActive` would go false with the target still live
+and a release inside the zone would report "consumed" with nothing to consume.
+
+**Kept, though currently unused: `cancelCustomEntityDrag()`.** A silent abort —
+neither resolve callback fires, because the host asked for it and therefore
+already knows. Honesty about its status: nothing in the demo or the stories calls
+it, and every reason to abort mid-gesture is already covered.
+
+| Reason to abort mid-gesture | Already handled by |
+| --- | --- |
+| Pointer released, anywhere | `pointerup` → `dropped` / `released-outside` |
+| Touch became a scroll | `pointercancel` → `cancelled` |
+| Released outside the window, alt-tab | `window` `blur` → `cancelled` |
+| User pressed Escape | `keydown` → `cancelled` |
+| "This turned out to be a pan" | don't call `start` yet — calling it late in the held gesture, past a drag threshold, is explicitly legal |
+| Chat unmounted mid-drag | the hook's unmount cleanup detaches |
+| Selection changed | `startCustomEntityDrag(newSelection)` replaces the payload |
+
+It is kept as a deliberate escape hatch for a host we have not written, on the
+grounds that it is a few lines that cannot misfire: a no-op when idle, silent
+when it acts. Do not reach for it as part of a normal gesture — if you find
+yourself needing it, check the table first, because the mechanism has probably
+already done the job.
+
+**Accepted costs.**
+
+- **Four listeners at rest**, where §3 previously boasted zero. Cheap, and the
+  exactness they buy is the foundation of the guard.
+- **The overlay can no longer be painted declaratively.** A Storybook story
+  cannot show it from static args, because static args are exactly what the
+  guard rejects. Not really a loss — the old `DragCustomEntities` story
+  displayed a *stranded, inert* overlay and could never reach the second tier
+  (§14) — but it does mean the only way to see the overlay is to perform a drag.
+  `StartCustomEntityDrag` is driven by hand and `DragGesture` drives itself.
+- **The host needs a ref.** One `useRef` against the `useState` and two
+  clearing callbacks it replaces, so the host gets smaller, not larger.
+- **A drag ghost can still be stranded.** The failure mode did not vanish
+  entirely; it moved somewhere harmless. A host that ignores both resolve
+  callbacks leaves its *own* ghost on screen, and MagicChat keeps working. The
+  degraded state is now the host's chrome misbehaving rather than the component
+  being wedged.

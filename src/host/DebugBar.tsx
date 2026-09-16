@@ -5,8 +5,9 @@ import type { CustomEntityDropDebug, CustomEntityDropListenerName } from '../mag
 /**
  * Live state of the drag, split along the architecture boundary.
  *
- *   HOST panel      — what the host owns: detection and the drag payload.
- *   MAGICCHAT panel — what the component owns: listeners, hit test, the latch.
+ *   HOST panel      — what the host owns: detection, and its own drag ghost.
+ *   MAGICCHAT panel — what the component owns: the payload, listeners, hit
+ *                     test, the latch.
  *
  * The MagicChat side is read straight out of the mechanism via `onDebugChange`,
  * never re-derived here — a panel that recomputes what it shows can agree with
@@ -17,7 +18,6 @@ import type { CustomEntityDropDebug, CustomEntityDropListenerName } from '../mag
  */
 
 export interface HostDebugState {
-  entityCount: number;
   ghostVisible: boolean;
   mapDragLocked: boolean;
   /** Which entity was pressed last, and which hit-test path found it. */
@@ -105,16 +105,15 @@ export function DebugBar({ host, chat }: DebugBarProps) {
         <span className="debug-bar-summary">
           <span className={`debug-pill debug-pill-${latch}`}>latch: {latch}</span>
           <span className="debug-field-label">
-            {host.entityCount} in flight · last: {host.lastOutcome}
+            {chat?.entityCount ?? 0} in flight · last: {host.lastOutcome}
           </span>
         </span>
       </div>
 
       {open && (
         <div className="debug-panels">
-          <Panel side="host" title="HOST" subtitle="detects the drag · owns the payload">
+          <Panel side="host" title="HOST" subtitle="detects the drag · owns the ghost">
             <Row label="State">
-              <Field label="dragCustomEntities">{host.entityCount}</Field>
               <Light on={host.ghostVisible} label="drag ghost" />
               <Light
                 on={host.mapDragLocked}
@@ -128,9 +127,9 @@ export function DebugBar({ host, chat }: DebugBarProps) {
             </Row>
           </Panel>
 
-          <Panel side="chat" title="MAGICCHAT" subtitle="detects the drop · owns the latch">
+          <Panel side="chat" title="MAGICCHAT" subtitle="owns the payload · detects the drop">
             <Row label="State">
-              <span className={`debug-pill debug-pill-${latch}`} title="idle → armed → spent">
+              <span className={`debug-pill debug-pill-${latch}`} title="idle → armed → idle">
                 {latch}
               </span>
               <Light
@@ -158,6 +157,28 @@ export function DebugBar({ host, chat }: DebugBarProps) {
                   </span>
                 );
               })}
+            </Row>
+
+            {/*
+              The two fields that replace the old "array set outside a press"
+              footgun. `pointerDown` is the tracker state
+              `startCustomEntityDrag` consults, so it answers "why was my drag
+              refused?"; `refusedStarts` counts the times it said no. A host
+              announcing drags outside a real press shows up here as a rising
+              counter instead of a drop target that dies on its first move.
+            */}
+            <Row label="Press">
+              <Light
+                on={!!chat?.pointerDown}
+                label="button held"
+                title="The always-on tracker. startCustomEntityDrag is refused unless this is lit."
+              />
+              <Field label="tracker">
+                {chat?.pointerDown
+                  ? `id ${chat.pointerDown.pointerId} ${chat.pointerDown.pointerType}`
+                  : '—'}
+              </Field>
+              <Field label="refused starts">{chat?.refusedStarts ?? 0}</Field>
             </Row>
 
             <Row label="Hit test">

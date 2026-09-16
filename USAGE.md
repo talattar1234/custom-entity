@@ -11,13 +11,14 @@ For the full picture see [`README.md`](./README.md); for the internals,
 ## The whole thing
 
 ```tsx
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { MagicChat } from './magic-chat';
 import type {
   CustomEntity,
   CustomEntityComposerProps,
   CustomEntityMessageProps,
   CustomEntityComponentRegistry,
+  MagicChatHandle,
 } from './magic-chat';
 import './magic-chat/magic-chat.css';
 
@@ -60,9 +61,9 @@ function CarCard({ entity }: CustomEntityMessageProps<CarEntity>) {
 /* 3 ── The host. */
 
 export function App() {
-  const [dragCustomEntities, setDragCustomEntities] = useState<CustomEntity[]>([]);
+  const chatRef = useRef<MagicChatHandle>(null);
 
-  // Must be memoised — see "Three things that will bite you" below.
+  // Must be memoised — see "Two things that will bite you" below.
   const customEntityComponents: CustomEntityComponentRegistry = useMemo(
     () => ({
       Car: {
@@ -74,63 +75,61 @@ export function App() {
     [],
   );
 
-  // Clear the payload on either outcome, so the next drag can arm.
-  const clearDrag = useCallback(() => setDragCustomEntities([]), []);
-
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* The drag source. Any element, or a canvas hit-test result. */}
       <div
         style={{ flex: 1, padding: 40, touchAction: 'none', cursor: 'grab' }}
         onPointerDown={(event) => {
-          event.preventDefault();       // stop the browser scrolling on touch
-          setDragCustomEntities([car]); // that is the entire "start a drag"
+          event.preventDefault();  // stop the browser scrolling on touch
+          // That is the entire "start a drag". No state, nothing to clear.
+          chatRef.current?.startCustomEntityDrag([car]);
         }}
       >
         🚗 press and drag me into the chat →
       </div>
 
       <div style={{ width: 400 }}>
-        <MagicChat
-          customEntityComponents={customEntityComponents}
-          dragCustomEntities={dragCustomEntities}
-          onDragCustomEntitiesConsumed={clearDrag}
-          onCustomEntityDragCancelled={clearDrag}
-        />
+        <MagicChat ref={chatRef} customEntityComponents={customEntityComponents} />
       </div>
     </div>
   );
 }
 ```
 
-That's it. There is no `dragstart`, no `draggable`, no `DataTransfer`, and no
-drop handler on the chat — the host announces the drag by setting a prop, and
-MagicChat watches for the release itself.
+That's it. No `dragstart`, no `draggable`, no `DataTransfer`, no drop handler on
+the chat — and no drag state in your component. The host announces the drag with
+one call and MagicChat watches for the release itself, disarming when it comes.
+
+Add `onDragCustomEntitiesConsumed` / `onCustomEntityDragCancelled` if you want
+to know how it ended — for instance to hide a drag ghost. Exactly one fires per
+gesture, and both are purely informational: the chat has already reset itself by
+the time they run.
 
 ---
 
 ## What just happened
 
 ```
-onPointerDown           → setDragCustomEntities([car])
+onPointerDown           → chatRef.current.startCustomEntityDrag([car])
                             │
                             ▼
-MagicChat sees a non-empty array
+MagicChat checks a button is actually held  → if not, returns false, does nothing
   → paints the drop overlay, and attaches pointermove / pointerup on `document`
+    — synchronously, inside the call, so the first move is never missed
   → pointermove: hit-tests the coordinates, names the entity in the overlay
   → pointerup:   inside the chat? attach to composer : ignore
+  → then disarms itself: listeners off, payload cleared, ready for the next drag
                             │
                             ▼
 onDragCustomEntitiesConsumed   (dropped)
 onCustomEntityDragCancelled    (released outside, Escape, pointercancel, blur)
-                            │
-                            ▼
-clearDrag() → setDragCustomEntities([]) → ready for the next drag
+   — optional; the chat is already back at rest when these run
 ```
 
 ---
 
-## Three things that will bite you
+## Two things that will bite you
 
 **1. Memoise the registry.** An inline object recreated every render means
 `composer` and `message` are *new component types* every time, so React
@@ -158,16 +157,7 @@ const customEntityComponents = useMemo(() => ({
 }), [zoomTo]);
 ```
 
-**2. Always clear the array.** MagicChat allows **one drop per non-empty
-period**, and it paints its drop overlay for as long as the array is non-empty.
-If you only clear in `onDragCustomEntitiesConsumed`, a drag released outside the
-chat leaves the array populated — so the overlay stays stranded on top of the
-chat and *no future drag will arm*. Handle both callbacks, as the example does.
-
-A drop overlay that will not go away is the symptom, and this is always the
-cause.
-
-**3. Your drag ghost must be `pointer-events: none`.** If you render something
+**2. Your drag ghost must be `pointer-events: none`.** If you render something
 that follows the cursor, MagicChat's `document.elementFromPoint` hit test will
 return your ghost on every frame instead of the chat, and the drop will never
 register.
@@ -178,6 +168,28 @@ register.
 
 Also set `touch-action: none` on the drag source, or the browser claims a
 touch-drag as a scroll and fires `pointercancel` mid-gesture.
+
+### And one rule, which the component enforces for you
+
+**Call `startCustomEntityDrag` while the button is still down.** From
+`onPointerDown`, or later in the same held gesture — waiting a few pixels to
+tell a click from a drag is fine. From a click handler, an effect, or a timer
+after the release it is *refused*: it returns `false`, arms nothing, and paints
+nothing.
+
+```tsx
+// ✗ refused — no button is held at any point
+<button onClick={() => chatRef.current?.startCustomEntityDrag([car])}>Drag</button>
+
+// ✓ the button is physically down
+<div onPointerDown={() => chatRef.current?.startCustomEntityDrag([car])}>🚗</div>
+```
+
+This used to be a footgun rather than a rule: the old API took a
+`dragCustomEntities` prop, which *could* be set from anywhere, and doing so
+armed a drop target with no gesture behind it — it then died silently on the
+first mouse move. Now the call just says no. Check its return value if you want
+to know, or watch `refusedStarts` in the debug snapshot.
 
 ---
 
@@ -197,11 +209,14 @@ generic fallback chip.
 
 ## Dragging several entities at once
 
-The prop is an array the whole way through:
+The payload is an array the whole way through:
 
 ```tsx
-setDragCustomEntities([car, area]);
+chatRef.current?.startCustomEntityDrag([car, area]);
 ```
+
+Calling it again while the drag is live replaces the payload, so a selection can
+grow mid-gesture.
 
 The overlay reads "Release to attach Car 123 and Area A" and both chips land in the
 composer.
@@ -209,14 +224,14 @@ composer.
 ## When the source is a canvas or WebGL object
 
 Nothing changes on the MagicChat side — this is the case the design exists for.
-Hit-test it yourself on `pointerdown` and set the prop:
+Hit-test it yourself on `pointerdown` and make the call:
 
 ```tsx
 const onPointerDown = (event: React.PointerEvent) => {
   const hit = myRenderer.pick(event.clientX, event.clientY); // your own hit test
   if (!hit) return;
   event.preventDefault();
-  setDragCustomEntities([toEntity(hit)]);
+  chatRef.current?.startCustomEntityDrag([toEntity(hit)]);
 };
 ```
 
@@ -227,8 +242,12 @@ the DOM-marker path, in one function.
 
 ```tsx
 // Attach without a drag — a "Send to chat" button, or keyboard accessibility.
-const chatRef = useRef<MagicChatHandle>(null);
 chatRef.current?.attachEntities([car]);
+
+// Abandon a drag you started. Silent: neither resolve callback fires. You will
+// probably never need it — release, pointercancel, blur and Escape are all
+// handled for you already.
+chatRef.current?.cancelCustomEntityDrag();
 
 // De-duplicate in the composer. Only you know what makes two entities equal.
 Car: { composer: CarChip, message: CarCard, getId: (e) => e.properties.id }
